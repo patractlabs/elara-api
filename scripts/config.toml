@@ -1,0 +1,19 @@
+[kafka]
+url = "localhost:9092"
+topic = "example_test"
+mode = "plain"
+username = "aaa"
+password = "kkk"
+
+[stat]
+name = "stat"
+url = "localhost:1234"
+
+[ws]
+name = "websocket"
+url = "localhost:1234"
+
+[[chains]]
+name = "Polkadot"
+rpcUrl = "localhost:1234"
+wsUrl = "localhost:1234"
