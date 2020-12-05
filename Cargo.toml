@@ -25,3 +25,4 @@ rocket = "0.4.2"
 rocket_contrib = { version="0.4.6"}
 curl = "0.4.34"
 chrono = { version = "0.4", features = ["serde"] }
+crossbeam-channel = "0.5.0"

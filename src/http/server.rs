@@ -4,7 +4,7 @@ use rocket::http::{Method};
 use serde::{Serialize, Deserialize};
 use rocket_contrib::json::{Json};
 use rocket::handler::{self, Handler};
-use futures::executor::block_on;
+// use futures::executor::block_on;
 use super::validator::Validator;
 use super::request::*;
 use super::curl::*;
@@ -41,7 +41,8 @@ pub struct HttpServer {
     target: Arc<HashMap<String, String>>,
     validator: Arc<Mutex<Validator>>,
     client: RequestCurl,
-    sender: KafkaProducerSmol
+    // sender: KafkaProducerSmol,
+    txCh: crossbeam_channel::Sender<(String, String)>
 }
 
 impl ReqMessage {
@@ -63,15 +64,21 @@ impl ReqMessage {
     }
 }
 impl HttpServer {
-    pub fn new(target: Arc<HashMap<String, String>>, vali: Arc<Mutex<Validator>>, broker: String, topic: String) -> Self {
-        HttpServer{target: target, validator: vali, client: RequestCurl, sender: KafkaProducerSmol::new(broker, topic)}
+    pub fn new(target: Arc<HashMap<String, String>>, vali: Arc<Mutex<Validator>>, tx: crossbeam_channel::Sender<(String, String)>) -> Self {
+        HttpServer{target: target, validator: vali, client: RequestCurl, txCh: tx}
     }
 
     pub fn Start(self) {
-        // let svr: HttpServer = HttpServer::new(Arc::new(Mutex::new(Validator::new("dsf".to_string()))));
         tokio::spawn(async move {
             rocket::ignite().mount("/", self).launch();
         });
+    }
+
+    fn SendMsg(&self, key: &str, info: &str) -> bool {
+        if let Err(e) = self.txCh.send((key.to_string(), info.to_string())) {
+            return false;
+        }
+        true
     }
 }
 
@@ -115,7 +122,8 @@ impl Handler for HttpServer {
             let msg = KafkaInfo{key: "request".to_string(), message:parseRequest(req, &resp.data.unwrap_or("null".to_string()), &chain, &pid, &contents, start, end)};
             let info = serde_json::to_string(&msg).unwrap();
             // todo: async, do send in other thread
-            block_on(self.sender.sendMsg("api", &info));
+            // block_on(self.sender.sendMsg("api", &info));
+            self.SendMsg("api", &info);
             return handler::Outcome::from(req, resp.mssage);
         }
 
@@ -161,4 +169,31 @@ fn parseRequest(req: &Request, resp: &str, chain: &str, pid: &str, param: &str, 
     msg.end = end;
     // println!("{:?}", msg);
     msg
+}
+
+pub struct Broadcaster {
+    sender: KafkaProducerSmol,
+    rxCh: crossbeam_channel::Receiver<(String, String)>
+}
+
+impl Broadcaster {
+    pub fn new(broker: String, topic: String, rx: crossbeam_channel::Receiver<(String, String)>) -> Self {
+        Broadcaster{sender: KafkaProducerSmol::new(broker, topic), rxCh: rx}
+    }
+
+    fn MsgNotify(self) {
+        let rpipe = self.rxCh;
+        let kafka = self.sender;
+        tokio::spawn(async move {
+            loop {
+                if let Ok(note) = rpipe.recv() {
+                    kafka.sendMsg(&note.0, &note.1).await;
+                }
+            }
+        });
+    }
+
+    pub fn Start(self) {
+        self.MsgNotify();
+    }
 }
