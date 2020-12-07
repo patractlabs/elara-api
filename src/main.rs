@@ -9,6 +9,9 @@ use clap::{App, Arg};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
+use log::*;
+use simplelog::*;
+
 mod config;
 use crate::config::toml;
 
@@ -21,6 +24,7 @@ mod ws;
 use crate::ws::relay::WSProxy;
 
 use crossbeam_channel::bounded;
+use crate::http::server::MessageSender;
 
 #[tokio::main]
 async fn main() {
@@ -37,7 +41,9 @@ async fn main() {
     let configFile = matches.value_of("file").unwrap();
 
     let config = toml::ParseConfig(configFile);
-    println!("{:?}", config);
+
+    LogInit(&config.log);
+    info!("{:?}", config);
 
     let mut chainsWS = HashMap::new();
     let mut chainsRPC = HashMap::new();
@@ -50,13 +56,31 @@ async fn main() {
 
     let (tx, rx) = bounded(10);
     let achainrpc = Arc::new(chainsRPC);
-    let rpcSvr = HttpServer::new(achainrpc.clone(), vali.clone(), tx);
+    let rpcSvr = HttpServer::new(achainrpc.clone(), vali.clone(), MessageSender::<(String, String)>::new(tx.clone()));
     let notifier = Broadcaster::new(config.kafka.url, config.kafka.topic, rx);
 
     let achainws = Arc::new(chainsWS);
-    let wsSvr = WSProxy::new(config.ws.url, achainws.clone(), vali.clone());
+    let wsSvr = WSProxy::new(config.ws.url, achainws.clone(), vali.clone(), MessageSender::<(String, String)>::new(tx.clone()));
 
     notifier.Start();
     rpcSvr.Start();
     wsSvr.Start();
+}
+
+fn LogInit(cfg: &toml::LogConfig) {
+    let level = match &cfg.level[..] {
+        "Warn" => LevelFilter::Warn,
+        "Error" => LevelFilter::Error,
+        "Info" => LevelFilter::Info,
+        "Debug" => LevelFilter::Debug,
+        "Trace" => LevelFilter::Trace,
+        _ => LevelFilter::Off
+    };
+    
+    CombinedLogger::init(
+        vec![
+            TermLogger::new(level, Config::default(), TerminalMode::Mixed), //terminal logger
+            // WriteLogger::new(LogLevelFilter::Info, Config::default(), File::create("my_rust_binary.log").unwrap()) //记录日志到"*.log"文件中
+        ]
+    ).unwrap();
 }

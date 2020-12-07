@@ -4,6 +4,7 @@ use rdkafka::util::AsyncRuntime;
 use std::future::Future;
 use futures::future::{self, FutureExt};
 use std::time::{Duration, Instant};
+use log::*;
 
 pub struct SmolRuntime;
 
@@ -41,7 +42,7 @@ impl KafkaProducerSmol {
     }
 
     pub async fn sendMsg(&self, key: &str, msg: &str) -> bool {
-        println!("send kafka {} {}", key, msg);
+        debug!("send kafka {} {}", key, msg);
         let delivery_status = self.client
                 .send_with_runtime::<SmolRuntime, str, _, _>(
                     FutureRecord::to(&self.topic)

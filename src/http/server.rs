@@ -14,26 +14,27 @@ use chrono::{DateTime, Utc};
 use crate::mq::producer_smol::*;
 use std::net::IpAddr;
 use std::net::Ipv4Addr;
+use log::*;
 
 #[derive(Serialize, Deserialize, Debug)]
-struct ReqMessage {
-    protocol: String,
-    header: String,
-    ip: String,
-    chain: String,
-    pid: String,
-    method: String,
-    req: String,
-    resp: String,
-    code: String,
-    bandwidth: String,
-    start: DateTime<Utc>,
-    end: DateTime<Utc>
+pub struct ReqMessage {
+    pub protocol: String,
+    pub header: String,
+    pub ip: String,
+    pub chain: String,
+    pub pid: String,
+    pub method: String,
+    pub req: String,
+    pub resp: String,
+    pub code: String,
+    pub bandwidth: String,
+    pub start: DateTime<Utc>,
+    pub end: DateTime<Utc>
 }
 #[derive(Serialize, Deserialize, Debug)]
-struct KafkaInfo {
-    key: String,
-    message: ReqMessage
+pub struct KafkaInfo {
+    pub key: String,
+    pub message: ReqMessage
 }
 
 #[derive(Clone)]
@@ -42,11 +43,12 @@ pub struct HttpServer {
     validator: Arc<Mutex<Validator>>,
     client: RequestCurl,
     // sender: KafkaProducerSmol,
-    txCh: crossbeam_channel::Sender<(String, String)>
+    // txCh: crossbeam_channel::Sender<(String, String)>
+    txCh: MessageSender<(String, String)>
 }
 
 impl ReqMessage {
-    fn new() -> Self {
+    pub fn new() -> Self {
         ReqMessage{
             protocol: String::new(),
             header: String::new(),
@@ -64,7 +66,7 @@ impl ReqMessage {
     }
 }
 impl HttpServer {
-    pub fn new(target: Arc<HashMap<String, String>>, vali: Arc<Mutex<Validator>>, tx: crossbeam_channel::Sender<(String, String)>) -> Self {
+    pub fn new(target: Arc<HashMap<String, String>>, vali: Arc<Mutex<Validator>>, tx: MessageSender<(String, String)>) -> Self {
         HttpServer{target: target, validator: vali, client: RequestCurl, txCh: tx}
     }
 
@@ -75,10 +77,10 @@ impl HttpServer {
     }
 
     fn SendMsg(&self, key: &str, info: &str) -> bool {
-        if let Err(e) = self.txCh.send((key.to_string(), info.to_string())) {
-            return false;
+        if self.txCh.Send((key.to_string(), info.to_string())) {
+            return true;
         }
-        true
+        false
     }
 }
 
@@ -87,11 +89,11 @@ impl Handler for HttpServer {
         let mut chain:String = String::new();
         let mut pid:String = String::new();
         if let Ok(achain) = req.get_param::<'r, String>(0).unwrap() {
-            println!("{:?}", achain);
+            info!("{:?}", achain);
             chain = achain;
         }
         if let Ok(apid) = req.get_param::<'r, String>(1).unwrap(){
-            println!("{:?}", apid);
+            info!("{:?}", apid);
             pid = apid;
         }
         let checker = self.validator.clone();
@@ -100,12 +102,12 @@ impl Handler for HttpServer {
             let verifier = checker.lock().unwrap();
             let path = "/".to_string()+&chain+"/"+&pid;
             if !verifier.CheckLimit(path) {
-                println!("project not exist");
+                error!("project not exist");
                 return handler::Outcome::from(req, Json(ApiResp{code:-1, message:"chain or project not match".to_string(), data:None}));
             }
         }
         if !self.target.contains_key(&chain) {
-            println!("chain {} not configured", chain);
+            debug!("chain {} not configured", chain);
             return handler::Outcome::from(req, Json(ApiResp{code:-3, message:"chain not config".to_string(), data:None}));
         }
         let chainAddr = self.target[&chain].clone();
@@ -113,7 +115,7 @@ impl Handler for HttpServer {
         if let Err(e) = data.open().read_to_string(&mut contents) {
             return handler::Outcome::from(req, Json(ApiResp{code:-2, message:format!("{:?}", e), data:None}));
         }
-        println!("content:{}", contents);
+        debug!("content:{}", contents);
 
         let start = Utc::now();
         let (resp, ok) = self.client.Rpc(&chainAddr, contents.clone());
@@ -145,10 +147,10 @@ fn parseRequest(req: &Request, resp: &str, chain: &str, pid: &str, param: &str, 
     let mut band = String::new();
     for i in 1..length {
         let ok = sliceHead[i].contains("Content-Length");
-        println!("scan {} {}", sliceHead[i], ok);
+        debug!("scan {} {}", sliceHead[i], ok);
         if ok {
             let dataLen = sliceHead[i].split(" ").collect::<Vec<&str>>();
-            println!("{:?}", dataLen);
+            debug!("{:?}", dataLen);
             band = dataLen[1].to_string();
             break;
         }
@@ -161,7 +163,7 @@ fn parseRequest(req: &Request, resp: &str, chain: &str, pid: &str, param: &str, 
     msg.header = format!("{:?}", req.headers());
     msg.chain = chain.to_string();
     msg.pid = pid.to_string();
-    msg.method = "post".to_string();
+    msg.method = req.method().as_str().to_string();
     msg.req = param.to_string();
     msg.code = rHeads[1].to_string();
     msg.bandwidth = band;
@@ -195,5 +197,24 @@ impl Broadcaster {
 
     pub fn Start(self) {
         self.MsgNotify();
+    }
+}
+
+#[derive(Clone)]
+pub struct MessageSender<T> {
+    tx: crossbeam_channel::Sender<T>,
+}
+
+impl <T> MessageSender<T> {
+    pub fn new(t: crossbeam_channel::Sender<T>) -> Self {
+        MessageSender{tx: t}
+    }
+
+    pub fn Send(&self, val: T) -> bool {
+        if let Err(e) = self.tx.send(val) {
+            error!("send err: {}", e);
+            return false;
+        }
+        true
     }
 }

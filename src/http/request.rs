@@ -1,6 +1,7 @@
 use reqwest::Client; 
 use serde::{Serialize, Deserialize};
 use std::time::Duration;
+use log::*;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct RpcReq {
@@ -44,18 +45,18 @@ impl HttpRequest {
                 let body = r.json::<BodyResp>().await;
                 match body {
                     Ok(b) => {
-                        println!("Got content:\n{:?}\n",  b);
+                        debug!("Got content:\n{:?}\n",  b);
                         return (b, true);
                     },
                     // Ok(b) => println!("Got {} bytes\nheader:\n{:?}\n", b.len(), b),
                     Err(e) => {
-                        eprintln!("Got an error: {}", e);
+                        error!("Got an error: {}", e);
                         return (BodyResp{code:-1, mssage:"".to_string(), data:None}, false);
                     },
                 }
             },
             Err(e) => {
-                eprintln!("Got an error: {}", e);
+                error!("Got an error: {}", e);
                 return (BodyResp{code:-1, mssage:"".to_string(), data:None}, false);
             },
         }
@@ -70,18 +71,18 @@ impl HttpRequest {
                 let body = r.json::<ApiResp>().await;
                 match body {
                     Ok(b) => {
-                        println!("Got content:\n{:?}\n",  b);
+                        debug!("Got content:\n{:?}\n",  b);
                         return (BodyResp{code:b.code, mssage:b.message.to_owned(), data:None}, true);
                     },
                     // Ok(b) => println!("Got {} bytes\nheader:\n{:?}\n", b.len(), b),
                     Err(e) => {
-                        eprintln!("Got an error: {}", e);
+                        error!("Got an error: {}", e);
                         return (BodyResp{code:-1, mssage:"".to_string(), data:None}, false);
                     },
                 }
             },
             Err(e) => {
-                eprintln!("Got an error: {}", e);
+                error!("Got an error: {}", e);
                 return (BodyResp{code:-1, mssage:"".to_string(), data:None}, false);
             },
         }
@@ -96,18 +97,18 @@ impl HttpRequest {
                 let body = r.json::<ApiResp>().await;
                 match body {
                     Ok(b) => {
-                        println!("Got content:\n{:?}\n",  b);
+                        debug!("Got content:\n{:?}\n",  b);
                         return (BodyResp{code:b.code, mssage:b.message.to_owned(), data:None}, true);
                     },
                     // Ok(b) => println!("Got {} bytes\nheader:\n{:?}\n", b.len(), b),
                     Err(e) => {
-                        eprintln!("Got an error: {}", e);
+                        debug!("Got an error: {}", e);
                         return (BodyResp{code:-1, mssage:"".to_string(), data:None}, false);
                     },
                 }
             },
             Err(e) => {
-                eprintln!("Got an error: {}", e);
+                debug!("Got an error: {}", e);
                 return (BodyResp{code:-1, mssage:"".to_string(), data:None}, false);
             },
         }
@@ -123,20 +124,20 @@ impl HttpRequest {
                 let body = r.bytes().await;
                 match body {
                     Ok(b) => {
-                        println!("Got content:\n{:?}\n",  b);
+                        debug!("Got content:\n{:?}\n",  b);
                         ret.code = 0;
                         ret.mssage = String::from_utf8_lossy(&b).to_string();
                         return (ret, true);
                     },
                     // Ok(b) => println!("Got {} bytes\nheader:\n{:?}\n", b.len(), b),
                     Err(e) => {
-                        eprintln!("Got an error: {}", e);
+                        error!("Got an error: {}", e);
                         return (ret, false);
                     },
                 }
             },
             Err(e) => {
-                eprintln!("Got an error: {}", e);
+                error!("Got an error: {}", e);
                 return (ret, false);
             },
         }

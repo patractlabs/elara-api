@@ -1,3 +1,6 @@
+[log]
+level = "Info"
+
 [kafka]
 url = "localhost:9092"
 topic = "example_test"

@@ -32,7 +32,14 @@ pub struct ChainConfig {
 
 #[derive(Deserialize)]
 #[derive(Debug)]
+pub struct LogConfig {
+    pub level: String
+}
+
+#[derive(Deserialize)]
+#[derive(Debug)]
 pub struct ApiConfig {
+    pub log: LogConfig,
     pub kafka: KafkaConfig,
     pub stat: SvrConfig,
     pub ws: SvrConfig,

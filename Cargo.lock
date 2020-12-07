@@ -540,6 +540,7 @@ dependencies = [
  "curl",
  "futures",
  "libc",
+ "log 0.4.11",
  "rdkafka",
  "reqwest",
  "rocket",
@@ -547,6 +548,7 @@ dependencies = [
  "serde",
  "serde_derive",
  "serde_json",
+ "simplelog",
  "smol",
  "tokio 0.2.23",
  "toml 0.5.7",
@@ -1920,6 +1922,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "simplelog"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2b2736f58087298a448859961d3f4a0850b832e72619d75adc69da7993c2cd3c"
+dependencies = [
+ "chrono",
+ "log 0.4.11",
+ "termcolor",
+]
+
+[[package]]
 name = "slab"
 version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2019,6 +2032,15 @@ dependencies = [
  "redox_syscall",
  "remove_dir_all",
  "winapi 0.3.9",
+]
+
+[[package]]
+name = "termcolor"
+version = "1.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2dfed899f0eb03f32ee8c6a0aabdb8a7949659e3466561fc0adf54e26d88c5f4"
+dependencies = [
+ "winapi-util",
 ]
 
 [[package]]

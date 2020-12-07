@@ -2,6 +2,7 @@ use curl::easy::{Easy,List};
 use std::io::Read;
 use std::time::Duration;
 use super::request::*;
+use log::*;
 
 #[derive(Clone)]
 pub struct RequestCurl;
@@ -27,13 +28,13 @@ impl RequestCurl {
                 return (ret, false);
             }
             if let Err(e) = transfer.perform() {
-                println!("error: {}", e);
+                error!("error: {}", e);
                 ret.mssage = format!("{:?}", e);
                 return (ret, false);
             }
         }
         let cache = String::from_utf8_lossy(&buf).to_string();
-        println!("rcv: {}", cache);
+        debug!("rcv: {}", cache);
         if let Ok(obj) = serde_json::from_str::<ApiResp>(&cache) {
             ret.code = obj.code;
             ret.mssage = obj.message;
@@ -68,7 +69,7 @@ impl RequestCurl {
             return (ret, false);
         }
         if let Err(e) = handle.http_headers(list) {
-            println!("error: {}", e);
+            error!("error: {}", e);
             ret.mssage = format!("{:?}", e);
             return (ret, false);
         }
@@ -103,7 +104,7 @@ impl RequestCurl {
             // } //segment fault
 
             if let Err(e) = transfer.perform() {
-                println!("error: {}", e);
+                error!("error: {}", e);
                 ret.mssage = format!("{:?}", e);
                 return (ret, false);
             }
@@ -111,7 +112,7 @@ impl RequestCurl {
         
         ret.mssage = String::from_utf8_lossy(&buf).to_string();
         ret.data = Some(String::from_utf8_lossy(&head).to_string());
-        println!("rcv: {} {:?}", ret.mssage, ret.data);
+        debug!("rcv: {} {:?}", ret.mssage, ret.data);
         ret.code = 0;
         return (ret, true);
 
