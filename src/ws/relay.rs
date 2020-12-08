@@ -57,7 +57,8 @@ impl WSProxy {
             let checker = self.validator.clone();
             let chains = self.target.clone();
             let caster = self.txCh.clone();
-            tokio::spawn(async move {
+            // tokio::spawn(async move {
+            std::thread::spawn( move || {
                 let mut path = String::new();
                 let clientIp = format!("{}", stream.peer_addr().unwrap_or(SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(127, 127, 127, 127), 1111))));
                 info!("client ip: {}", clientIp);

@@ -186,10 +186,11 @@ impl Broadcaster {
     fn MsgNotify(self) {
         let rpipe = self.rxCh;
         let kafka = self.sender;
-        tokio::spawn(async move {
+        // tokio::spawn(async move {
+        std::thread::spawn( move || {
             loop {
                 if let Ok(note) = rpipe.recv() {
-                    kafka.sendMsg(&note.0, &note.1).await;
+                    futures::executor::block_on(kafka.sendMsg(&note.0, &note.1));
                 }
             }
         });
