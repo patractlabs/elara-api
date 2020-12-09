@@ -118,3 +118,19 @@ impl RequestCurl {
 
     }
 }
+
+#[derive(Clone)]
+pub struct RequestMock;
+
+impl RequestMock {
+    pub fn Get(&self, url: &str) -> (BodyResp, bool) {
+        let ret = BodyResp{code: 0, mssage: String::new(), data: None};
+        return (ret, true);
+    }
+
+    pub fn Rpc(&self, url: &str, params: String) -> (BodyResp, bool) {
+        let head = "HTTP/1.1 200 OK\r\nContent-Length: 1088\r\nContent-Type: application/json; charset=utf-8\r\nDate: Wed, 09 Dec 2020 07:40:22 GMT\r\nServer: Caddy\r\n";
+        let ret = BodyResp{code: 0, mssage: "mock".to_string(), data: Some(head.to_string())};
+        return (ret, true);
+    }
+}

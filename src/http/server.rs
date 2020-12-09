@@ -42,6 +42,7 @@ pub struct HttpServer {
     target: Arc<HashMap<String, String>>,
     validator: Arc<Mutex<Validator>>,
     client: RequestCurl,
+    // client: RequestMock, // for mock test
     // sender: KafkaProducerSmol,
     // txCh: crossbeam_channel::Sender<(String, String)>
     txCh: MessageSender<(String, String)>
@@ -68,6 +69,7 @@ impl ReqMessage {
 impl HttpServer {
     pub fn new(target: Arc<HashMap<String, String>>, vali: Arc<Mutex<Validator>>, tx: MessageSender<(String, String)>) -> Self {
         HttpServer{target: target, validator: vali, client: RequestCurl, txCh: tx}
+        // HttpServer{target: target, validator: vali, client: RequestMock, txCh: tx} // for mock test
     }
 
     pub fn Start(self) {
