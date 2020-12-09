@@ -103,53 +103,63 @@ impl WSProxy {
                 }
                 let mut targetSocket = WSProxy::Connect(&chains[pathSeg[1]]);
                 
+                /*改造成两个线程，分别由read事件驱动，转发数据到另一个websocket连接，read_message是阻塞的，因此这样会死锁  */
+                let aSvrConn = Arc::new(Mutex::new(targetSocket));
+                let aClientConn = Arc::new(Mutex::new(websocket));
+                let svrHandleRd = aSvrConn.clone();
+                let clientHandleWr = aClientConn.clone();
                 // tokio::spawn(move {
+                std::thread::spawn(move || {
                     loop {
-                        if let Ok(msg) = websocket.read_message() {
-                            let start = Utc::now();
-                            let req = format!("{}", msg);
-                            if msg.is_binary() || msg.is_text() {
-                                debug!("proxy rcv client: {}", msg);
-                                if let Err(e) = targetSocket.write_message(msg) {
-                                    error!("write server error {}", e);
+                        {
+                            let mut svr = svrHandleRd.lock().unwrap();
+                            if let Ok(msg) = svr.read_message() {
+                                if msg.is_binary() || msg.is_text() {
+                                    // 将msg传出去，给下面write_message用
+                                } else if msg.is_close() {
+                                    debug!("server close {}", msg);
                                     break;
                                 }
-
-                                match targetSocket.read_message() {
-                                    Ok(msg) => {
-                                        if msg.is_binary() || msg.is_text() {
-                                            debug!("proxy rcv server: {}", msg);
-                                            if let Err(e) = websocket.write_message(msg) {
-                                                error!("write client error {}", e);
-                                                break;
-                                            }
-                                        } else if msg.is_close() {
-                                            debug!("server close {}", msg);
-                                            break;
-                                        }
-                                    },
-                                    Err(e) => {
-                                        error!("server error {}", e);
-                                        break;
-                                    }
-
-                                }
-                            } else if msg.is_close() {
-                                debug!("client close {}", msg);
+                            } else {
+                                error!("server error {}", e);
                                 break;
                             }
-                            let end = Utc::now();
-                            let mut reqMsg = newReqMessage(&msgTemp);
-                            reqMsg.req = req;
-                            reqMsg.start = start;
-                            reqMsg.end = end;
-                            reqMsg.code = "200".to_string();
-                            let msg = KafkaInfo{key: "request".to_string(), message:reqMsg};
-                            let info = serde_json::to_string(&msg).unwrap();
-                            caster.Send(("api".to_string(), info));
-                        } else {
-                            info!("client lost");
-                            break;
+                        }
+                        {
+                            let mut client = clientHandleWr.lock().unwrap();
+                            if let Err(e) = client.write_message(msg) {
+                                error!("write client error {}", e);
+                                break;
+                            }
+                        }
+                        
+                    }
+                });
+
+                let svrHandleWr = aSvrConn.clone();
+                let clientHandleRd = aClientConn.clone();
+                // tokio::spawn(move {
+                    loop {
+                        {
+                            let mut client = clientHandleRd.lock().unwrap();
+                            if let Ok(msg) = client.read_message() {
+                                if msg.is_binary() || msg.is_text() {
+                                    // 将msg传出去，给下面write_message用
+                                } else if msg.is_close() {
+                                    debug!("server close {}", msg);
+                                    break;
+                                }
+                            } else {
+                                error!("server error {}", e);
+                                break;
+                            }
+                        }
+                        {
+                            let mut svr = svrHandleWr.lock().unwrap();
+                            if let Err(e) = svr.write_message(msg) {
+                                error!("write client error {}", e);
+                                break;
+                            }
                         }
                         
                     }
