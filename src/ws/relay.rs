@@ -100,7 +100,7 @@ impl WSProxy {
                     websocket.close(None);
                     return;
                 }
-                let mut targetSocket = WSProxy::Connect(&chains[pathSeg[1]]).await;
+                let targetSocket = WSProxy::Connect(&chains[pathSeg[1]]).await;
                 let (svrHandleWr, svrHandleRd) = targetSocket.split();
                 let (clientHandleWr, clientHandleRd) = websocket.split();
 
@@ -115,7 +115,7 @@ impl WSProxy {
                         
                     } else if msg.is_close() {
                         debug!("server close {}", msg);
-                        // return future::err(());
+                        // return future::err(()); // compile error
                     }
                     future::ok(())
                 });
@@ -129,7 +129,7 @@ impl WSProxy {
 
                     } else if msg.is_close() {
                         debug!("client close {}", msg);
-                        // return future::err(());
+                        // return future::err(()); // compile error
                     }
                     let mut reqMsg = newReqMessage(&msgTemp);
                     reqMsg.req = req;
@@ -150,9 +150,6 @@ impl WSProxy {
                 pin_mut!(clientIncomingHandler, SendSvrHandler);
                 future::select(clientIncomingHandler, SendSvrHandler).await;
                 info!("exit the link");
-                // targetSocket.close(None);
-                // websocket.close(None);
-
             });
         }
     }
