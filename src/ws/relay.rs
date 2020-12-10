@@ -1,11 +1,12 @@
-use std::net::{TcpListener, Ipv4Addr, SocketAddr, SocketAddrV4};
-use tungstenite::accept_hdr;
+// use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
+// use tungstenite::accept_hdr;
 use tungstenite::handshake::server::{Request, Response};
-use tungstenite::{connect};
+// use tungstenite::{connect};
 use url::Url;
 
-use tungstenite::protocol::WebSocket;
-use tungstenite::client::AutoStream;
+// use tungstenite::protocol::WebSocket;
+// use tungstenite::client::AutoStream;
+// use tungstenite::protocol::Message;
 
 use std::sync::{Arc, Mutex};
 use std::collections::HashMap;
@@ -13,6 +14,10 @@ use crate::http::validator::Validator;
 use log::*;
 use crate::http::server::{MessageSender, ReqMessage, KafkaInfo};
 use chrono::{Utc};
+use tokio_tungstenite::{WebSocketStream, connect_async, accept_hdr_async};
+use tokio::net::{TcpListener, TcpStream};
+use futures_util::{future, pin_mut, stream::TryStreamExt, StreamExt};
+use futures_channel::mpsc::{unbounded};
 
 pub struct WSProxy {
     url: String,
@@ -26,11 +31,11 @@ impl WSProxy {
         WSProxy{url: url, target: target, validator: vali, txCh: tx}
     }
 
-    fn Connect(target: &str) -> Box<WebSocket<AutoStream>> {
+    async fn Connect(target: &str) -> Box<WebSocketStream<TcpStream>> {
         // connect real target
         info!("connect websocket server: {}", target);
         let (socket, response) =
-            connect(Url::parse(target).unwrap()).expect("Can't connect");
+            connect_async(Url::parse(target).unwrap()).await.expect("Can't connect");
 
         info!("Connected to the server");
         info!("Response HTTP code: {}", response.status());
@@ -42,25 +47,19 @@ impl WSProxy {
         Box::new(socket)
     }
 
-    pub fn Start(& self) {
+    pub async fn Start(& self) {
         info!("websocket listening {}", self.url);
-        let server = TcpListener::bind(&self.url[..]).unwrap();
-        for link in server.incoming() {
-            debug!("guest coming");
-            let stream = match link {
-                Ok(conn) => conn,
-                Err(e) => {
-                    error!("link in error: {}", e);
-                    continue;
-                }
-            };
+        let server = TcpListener::bind(&self.url[..]).await.unwrap();
+        while let Ok((stream, addr)) = server.accept().await {    
+            debug!("guest {} coming", addr);
+            
             let checker = self.validator.clone();
             let chains = self.target.clone();
             let caster = self.txCh.clone();
-            // tokio::spawn(async move {
-            std::thread::spawn( move || {
+            tokio::spawn(async move {
+            // std::thread::spawn( move || {
                 let mut path = String::new();
-                let clientIp = format!("{}", stream.peer_addr().unwrap_or(SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(127, 127, 127, 127), 1111))));
+                let clientIp = format!("{}", addr);
                 info!("client ip: {}", clientIp);
                 let mut msgTemp = ReqMessage::new();
                 
@@ -82,7 +81,7 @@ impl WSProxy {
 
                     Ok(response)
                 };
-                let mut websocket = accept_hdr(stream, callback).unwrap();
+                let mut websocket = accept_hdr_async(stream, callback).await.unwrap();
                 let pathStr = path.clone();
                 let pathSeg = pathStr.split("/").collect::<Vec<&str>>();
                 // verify chain and project
@@ -101,72 +100,59 @@ impl WSProxy {
                     websocket.close(None);
                     return;
                 }
-                let mut targetSocket = WSProxy::Connect(&chains[pathSeg[1]]);
-                
-                /*改造成两个线程，分别由read事件驱动，转发数据到另一个websocket连接，read_message是阻塞的，因此这样会死锁  */
-                let aSvrConn = Arc::new(Mutex::new(targetSocket));
-                let aClientConn = Arc::new(Mutex::new(websocket));
-                let svrHandleRd = aSvrConn.clone();
-                let clientHandleWr = aClientConn.clone();
-                // tokio::spawn(move {
-                std::thread::spawn(move || {
-                    loop {
-                        {
-                            let mut svr = svrHandleRd.lock().unwrap();
-                            if let Ok(msg) = svr.read_message() {
-                                if msg.is_binary() || msg.is_text() {
-                                    // 将msg传出去，给下面write_message用
-                                } else if msg.is_close() {
-                                    debug!("server close {}", msg);
-                                    break;
-                                }
-                            } else {
-                                error!("server error {}", e);
-                                break;
-                            }
-                        }
-                        {
-                            let mut client = clientHandleWr.lock().unwrap();
-                            if let Err(e) = client.write_message(msg) {
-                                error!("write client error {}", e);
-                                break;
-                            }
-                        }
-                        
-                    }
-                });
+                let mut targetSocket = WSProxy::Connect(&chains[pathSeg[1]]).await;
+                let (svrHandleWr, svrHandleRd) = targetSocket.split();
+                let (clientHandleWr, clientHandleRd) = websocket.split();
 
-                let svrHandleWr = aSvrConn.clone();
-                let clientHandleRd = aClientConn.clone();
-                // tokio::spawn(move {
-                    loop {
-                        {
-                            let mut client = clientHandleRd.lock().unwrap();
-                            if let Ok(msg) = client.read_message() {
-                                if msg.is_binary() || msg.is_text() {
-                                    // 将msg传出去，给下面write_message用
-                                } else if msg.is_close() {
-                                    debug!("server close {}", msg);
-                                    break;
-                                }
-                            } else {
-                                error!("server error {}", e);
-                                break;
-                            }
-                        }
-                        {
-                            let mut svr = svrHandleWr.lock().unwrap();
-                            if let Err(e) = svr.write_message(msg) {
-                                error!("write client error {}", e);
-                                break;
-                            }
-                        }
+                let (txS2C, rxS2C) = unbounded();
+                let (txC2S, rxC2S) = unbounded();
+
+                let svrIncomingHandler = svrHandleRd.try_for_each(move |msg| {
+                    if msg.is_binary() || msg.is_text() {
+                        debug!("proxy rcv server: {}", msg);
+                        txS2C.unbounded_send(msg.clone()).unwrap();
+
                         
+                    } else if msg.is_close() {
+                        debug!("server close {}", msg);
+                        // return future::err(());
                     }
-                    info!("exit the link");
-                    targetSocket.close(None);
-                    websocket.close(None);
-                // });
+                    future::ok(())
+                });
+                let SendClientHandler = rxS2C.map(Ok).forward(clientHandleWr);
+
+                let clientIncomingHandler = clientHandleRd.try_for_each( |msg| {
+                    let req = format!("{}", msg);
+                    if msg.is_binary() || msg.is_text() {
+                        debug!("proxy rcv client: {}", msg);
+                        txC2S.unbounded_send(msg.clone()).unwrap();
+
+                    } else if msg.is_close() {
+                        debug!("client close {}", msg);
+                        // return future::err(());
+                    }
+                    let mut reqMsg = newReqMessage(&msgTemp);
+                    reqMsg.req = req;
+                    reqMsg.start = Utc::now();
+                    reqMsg.code = "200".to_string();
+                    let msg = KafkaInfo{key: "request".to_string(), message:reqMsg};
+                    let info = serde_json::to_string(&msg).unwrap();
+                    caster.Send(("api".to_string(), info));
+
+                    future::ok(())
+                });
+                let SendSvrHandler = rxC2S.map(Ok).forward(svrHandleWr);
+
+                tokio::spawn( async move {
+                    pin_mut!(svrIncomingHandler, SendClientHandler);
+                    future::select(svrIncomingHandler, SendClientHandler).await;
+                });
+                pin_mut!(clientIncomingHandler, SendSvrHandler);
+                future::select(clientIncomingHandler, SendSvrHandler).await;
+                info!("exit the link");
+                // targetSocket.close(None);
+                // websocket.close(None);
+
             });
         }
     }

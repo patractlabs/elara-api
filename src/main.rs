@@ -64,7 +64,7 @@ async fn main() {
 
     notifier.Start();
     rpcSvr.Start();
-    wsSvr.Start();
+    wsSvr.Start().await;
 }
 
 fn LogInit(cfg: &toml::LogConfig) {
