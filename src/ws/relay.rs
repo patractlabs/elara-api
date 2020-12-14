@@ -8,7 +8,7 @@ use url::Url;
 // use tungstenite::client::AutoStream;
 // use tungstenite::protocol::Message;
 
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc};
 use std::collections::HashMap;
 use crate::http::validator::Validator;
 use log::*;

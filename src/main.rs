@@ -7,7 +7,7 @@
 
 use clap::{App, Arg};
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc};
 
 use log::*;
 use simplelog::*;
@@ -16,7 +16,7 @@ mod config;
 use crate::config::toml;
 
 mod http;
-use crate::http::server::{HttpServer, Broadcaster};
+use crate::http::server::{Broadcaster};
 use crate::http::validator::Validator;
 use crate::http::actix_server::{ActixWebServer, RunServer};
 
@@ -61,11 +61,8 @@ async fn main() {
     // rocket server
     // let rpcSvr = HttpServer::new(achainrpc.clone(), vali.clone(), MessageSender::<(String, String)>::new(tx.clone()));
 
-    let refChainInfo = &achainrpc.clone();
-    let refVali = &vali.clone();
-    let refSender = &MessageSender::<(String, String)>::new(tx.clone());
     //actix server
-    let rpcSvr = ActixWebServer::new(refChainInfo, refVali, refSender);
+    let rpcSvr = ActixWebServer::new(achainrpc.clone(), vali.clone(), MessageSender::<(String, String)>::new(tx.clone()));
 
     let notifier = Broadcaster::new(config.kafka.url, config.kafka.topic, rx);
 

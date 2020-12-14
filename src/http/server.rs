@@ -8,7 +8,7 @@ use rocket::handler::{self, Handler};
 use super::validator::Validator;
 use super::request::*;
 use super::curl::*;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc};
 use std::collections::HashMap;
 use chrono::{DateTime, Utc};
 use crate::mq::producer_smol::*;
