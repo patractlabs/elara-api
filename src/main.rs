@@ -18,10 +18,11 @@ use crate::config::toml;
 mod http;
 use crate::http::server::{HttpServer, Broadcaster};
 use crate::http::validator::Validator;
+use crate::http::actix_server::{ActixWebServer, RunServer};
 
 mod mq;
 mod ws;
-use crate::ws::relay::WSProxy;
+use crate::ws::relay::{WSProxy, RunWebSocketBg};
 
 use crossbeam_channel::bounded;
 use crate::http::server::MessageSender;
@@ -52,19 +53,30 @@ async fn main() {
         chainsRPC.insert(item.name, item.rpcUrl);
     }
 
-    let vali = Arc::new(Mutex::new(Validator::new(config.stat.url)));
+    // let vali = Arc::new(Mutex::new(Validator::new(config.stat.url)));
+    let vali = Validator::new(config.stat.url);
 
     let (tx, rx) = bounded(10);
     let achainrpc = Arc::new(chainsRPC);
-    let rpcSvr = HttpServer::new(achainrpc.clone(), vali.clone(), MessageSender::<(String, String)>::new(tx.clone()));
+    // rocket server
+    // let rpcSvr = HttpServer::new(achainrpc.clone(), vali.clone(), MessageSender::<(String, String)>::new(tx.clone()));
+
+    let refChainInfo = &achainrpc.clone();
+    let refVali = &vali.clone();
+    let refSender = &MessageSender::<(String, String)>::new(tx.clone());
+    //actix server
+    let rpcSvr = ActixWebServer::new(refChainInfo, refVali, refSender);
+
     let notifier = Broadcaster::new(config.kafka.url, config.kafka.topic, rx);
 
     let achainws = Arc::new(chainsWS);
     let wsSvr = WSProxy::new(config.ws.url, achainws.clone(), vali.clone(), MessageSender::<(String, String)>::new(tx.clone()));
 
     notifier.Start();
-    rpcSvr.Start();
-    wsSvr.Start().await;
+    // rpcSvr.Start();
+    // wsSvr.Start().await;
+    RunWebSocketBg(wsSvr);
+    RunServer(rpcSvr, config.http.port);
 }
 
 fn LogInit(cfg: &toml::LogConfig) {

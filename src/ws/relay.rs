@@ -22,12 +22,13 @@ use futures_channel::mpsc::{unbounded};
 pub struct WSProxy {
     url: String,
     target: Arc<HashMap<String, String>>,
-    validator: Arc<Mutex<Validator>>,
+    // validator: Arc<Mutex<Validator>>,
+    validator: Validator,
     txCh: MessageSender<(String, String)>
 }
 
 impl WSProxy {
-    pub fn new(url: String, target: Arc<HashMap<String, String>>, vali: Arc<Mutex<Validator>>, tx: MessageSender<(String, String)>) -> Self {
+    pub fn new(url: String, target: Arc<HashMap<String, String>>, vali: Validator, tx: MessageSender<(String, String)>) -> Self {
         WSProxy{url: url, target: target, validator: vali, txCh: tx}
     }
 
@@ -86,7 +87,8 @@ impl WSProxy {
                 let pathSeg = pathStr.split("/").collect::<Vec<&str>>();
                 // verify chain and project
                 {
-                    let verifier = checker.lock().unwrap();
+                    // let verifier = checker.lock().unwrap();
+                    let verifier = checker;
                     if !verifier.CheckLimit(path) {
                         error!("project not exist");
                         // targetSocket.close(None);
@@ -153,6 +155,12 @@ impl WSProxy {
             });
         }
     }
+}
+
+pub fn RunWebSocketBg(proxy: WSProxy) {
+    tokio::spawn(async move {
+        proxy.Start().await;
+    });
 }
 
 fn makeReqMessageTemplate(msg: &mut ReqMessage, req: &Request, client: String) {

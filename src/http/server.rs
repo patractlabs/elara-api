@@ -40,7 +40,8 @@ pub struct KafkaInfo {
 #[derive(Clone)]
 pub struct HttpServer {
     target: Arc<HashMap<String, String>>,
-    validator: Arc<Mutex<Validator>>,
+    // validator: Arc<Mutex<Validator>>,
+    validator: Validator,
     client: RequestCurl,
     // client: RequestMock, // for mock test
     // sender: KafkaProducerSmol,
@@ -67,7 +68,7 @@ impl ReqMessage {
     }
 }
 impl HttpServer {
-    pub fn new(target: Arc<HashMap<String, String>>, vali: Arc<Mutex<Validator>>, tx: MessageSender<(String, String)>) -> Self {
+    pub fn new(target: Arc<HashMap<String, String>>, vali: Validator, tx: MessageSender<(String, String)>) -> Self {
         HttpServer{target: target, validator: vali, client: RequestCurl, txCh: tx}
         // HttpServer{target: target, validator: vali, client: RequestMock, txCh: tx} // for mock test
     }
@@ -98,10 +99,11 @@ impl Handler for HttpServer {
             info!("{:?}", apid);
             pid = apid;
         }
-        let checker = self.validator.clone();
+        // let checker = self.validator.clone();
         // verify chain and project
         {
-            let verifier = checker.lock().unwrap();
+            // let verifier = checker.lock().unwrap();
+            let verifier = self.validator.clone();
             let path = "/".to_string()+&chain+"/"+&pid;
             if !verifier.CheckLimit(path) {
                 error!("project not exist");

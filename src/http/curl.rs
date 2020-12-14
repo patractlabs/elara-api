@@ -4,7 +4,7 @@ use std::time::Duration;
 use super::request::*;
 use log::*;
 
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub struct RequestCurl;
 
 impl RequestCurl {

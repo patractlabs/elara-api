@@ -38,8 +38,15 @@ pub struct LogConfig {
 
 #[derive(Deserialize)]
 #[derive(Debug)]
+pub struct HttpConfig {
+    pub port: String
+}
+
+#[derive(Deserialize)]
+#[derive(Debug)]
 pub struct ApiConfig {
     pub log: LogConfig,
+    pub http: HttpConfig,
     pub kafka: KafkaConfig,
     pub stat: SvrConfig,
     pub ws: SvrConfig,

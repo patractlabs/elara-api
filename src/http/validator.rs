@@ -4,6 +4,7 @@ use super::curl::*;
 // use std::cell::RefCell;
 // use std::sync::{Mutex};
 
+#[derive(Clone)]
 pub struct Validator {
     url: String,
     // cache: Mutex<HashMap<String, bool>>

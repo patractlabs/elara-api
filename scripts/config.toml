@@ -1,6 +1,9 @@
 [log]
 level = "Info"
 
+[http]
+port = "8300"
+
 [kafka]
 url = "localhost:9092"
 topic = "example_test"
