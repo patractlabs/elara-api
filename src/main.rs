@@ -73,7 +73,7 @@ async fn main() {
     // rpcSvr.Start();
     // wsSvr.Start().await;
     RunWebSocketBg(wsSvr);
-    RunServer(rpcSvr, config.http.port);
+    RunServer(rpcSvr, config.http.port).await;
 }
 
 fn LogInit(cfg: &toml::LogConfig) {
