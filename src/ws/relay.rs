@@ -3,7 +3,6 @@
 use tungstenite::handshake::server::{Request, Response};
 // use tungstenite::{connect};
 use url::Url;
-use tokio::runtime::Runtime;
 
 // use tungstenite::protocol::WebSocket;
 // use tungstenite::client::AutoStream;
@@ -15,8 +14,10 @@ use crate::http::validator::Validator;
 use log::*;
 use crate::http::server::{MessageSender, ReqMessage, KafkaInfo};
 use chrono::{Utc};
-use tokio_tungstenite::{WebSocketStream, connect_async, accept_hdr_async};
-use tokio::net::{TcpListener, TcpStream};
+use async_tungstenite::{WebSocketStream, accept_hdr_async};
+use async_tungstenite::async_std::connect_async;
+use async_std::net::{TcpListener, TcpStream};
+use async_std::task;
 use futures_util::{future, pin_mut, stream::TryStreamExt, StreamExt};
 use futures_channel::mpsc::{unbounded};
 
@@ -58,7 +59,7 @@ impl WSProxy {
             let checker = self.validator.clone();
             let chains = self.target.clone();
             let caster = self.txCh.clone();
-            tokio::spawn(async move {
+            task::spawn(async move {
             // std::thread::spawn( move || {
                 let mut path = String::new();
                 let clientIp = format!("{}", addr);
@@ -146,7 +147,7 @@ impl WSProxy {
                 });
                 let SendSvrHandler = rxC2S.map(Ok).forward(svrHandleWr);
 
-                tokio::spawn( async move {
+                task::spawn( async move {
                     pin_mut!(svrIncomingHandler, SendClientHandler);
                     future::select(svrIncomingHandler, SendClientHandler).await;
                 });
@@ -159,8 +160,7 @@ impl WSProxy {
 }
 
 pub fn RunWebSocketBg(proxy: WSProxy) {
-    let rt = Runtime::new().unwrap();
-    rt.spawn(async move {
+    task::spawn(async move {
         proxy.Start().await;
     });
 }
