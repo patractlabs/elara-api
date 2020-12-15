@@ -9,13 +9,11 @@ edition = "2018"
 [dependencies]
 smol = "1.2.4"
 clap = "2.33.3"
-tokio = { version = "0.3", features = ["time", "full", "io-util", "io-std", "macros", "rt-multi-thread", "stream"] }
 toml = "0.5.6"
 serde_derive = "1.0.104"
 serde = { version = "1.0.104", features = ["derive"] }
 serde_json = "1"
 bytes = "0.6"
-reqwest = { version = "0.10.1", features = ["json"] }
 futures = "0.3.0"
 futures-util = { version = "0.3", default-features = false, features = ["async-await", "sink", "std"] }
 futures-channel = "0.3"
@@ -23,8 +21,6 @@ libc = "0.2.0"
 rdkafka = { git = "https://github.com/fede1024/rust-rdkafka.git", branch = "master" }
 tungstenite = "0.11.1"
 url = "2.1.1"
-rocket = "0.4.2"
-rocket_contrib = { version="0.4.6"}
 curl = "0.4.34"
 chrono = { version = "0.4", features = ["serde"] }
 crossbeam-channel = "0.5.0"
