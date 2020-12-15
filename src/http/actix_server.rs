@@ -32,7 +32,8 @@ impl ActixWebServer {
     }
 }
 
-pub async fn RunServer(svr: ActixWebServer, port: String) -> std::io::Result<()> {
+pub fn RunServer(svr: ActixWebServer, port: String) -> std::io::Result<()> {
+    actix_web::rt::System::new("proxy").block_on(async move {
         HttpServer::new(move || {
             App::new()
                 .data(svr.clone())
@@ -45,6 +46,7 @@ pub async fn RunServer(svr: ActixWebServer, port: String) -> std::io::Result<()>
         .bind(format!("0.0.0.0:{}", port))?
         .run()
         .await
+    })
 }
 
 #[get("/actix")]

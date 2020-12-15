@@ -27,8 +27,7 @@ use crate::ws::relay::{WSProxy, RunWebSocketBg};
 use crossbeam_channel::bounded;
 use crate::http::server::MessageSender;
 
-#[tokio::main]
-async fn main() {
+fn main() {
     let matches = App::new("elara api")
         .version("0.0.1")
         .author("Patract Lab")
@@ -53,7 +52,6 @@ async fn main() {
         chainsRPC.insert(item.name, item.rpcUrl);
     }
 
-    // let vali = Arc::new(Mutex::new(Validator::new(config.stat.url)));
     let vali = Validator::new(config.stat.url);
 
     let (tx, rx) = bounded(10);
@@ -73,7 +71,7 @@ async fn main() {
     // rpcSvr.Start();
     // wsSvr.Start().await;
     RunWebSocketBg(wsSvr);
-    RunServer(rpcSvr, config.http.port).await;
+    RunServer(rpcSvr, config.http.port);
 }
 
 fn LogInit(cfg: &toml::LogConfig) {

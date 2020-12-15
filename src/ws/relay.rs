@@ -3,6 +3,7 @@
 use tungstenite::handshake::server::{Request, Response};
 // use tungstenite::{connect};
 use url::Url;
+use tokio::runtime::Runtime;
 
 // use tungstenite::protocol::WebSocket;
 // use tungstenite::client::AutoStream;
@@ -158,7 +159,8 @@ impl WSProxy {
 }
 
 pub fn RunWebSocketBg(proxy: WSProxy) {
-    tokio::spawn(async move {
+    let rt = Runtime::new().unwrap();
+    rt.spawn(async move {
         proxy.Start().await;
     });
 }
