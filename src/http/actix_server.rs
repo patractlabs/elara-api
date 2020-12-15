@@ -67,7 +67,7 @@ async fn transfer(obj: Data<ActixWebServer>, req: HttpRequest, web::Path((chain,
             }
         }
         if !obj.target.contains_key(&chain) {
-            debug!("chain {} not configured", chain);
+            error!("chain {} not configured", chain);
             let body = serde_json::to_string(&ApiResp{code:-3, message:"chain not config".to_string(), data:None}).unwrap();
             return HttpResponse::Ok()
                     .content_type("application/json")
