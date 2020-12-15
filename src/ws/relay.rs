@@ -127,7 +127,7 @@ impl WSProxy {
                     reqMsg.code = "200".to_string();
                     let msg = KafkaInfo{key: "request".to_string(), message:reqMsg};
                     let info = serde_json::to_string(&msg).unwrap();
-                    caster.Send(("api".to_string(), info));
+                    caster.Send(("request".to_string(), info));
 
                     future::ok(())
                 });

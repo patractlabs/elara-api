@@ -89,7 +89,7 @@ async fn transfer(obj: Data<ActixWebServer>, req: HttpRequest, web::Path((chain,
             let msg = KafkaInfo{key: "request".to_string(), message:parseActixRequest(&req, &resp.data.unwrap_or("null".to_string()), &chain, &pid, &contents, start, end)};
             let info = serde_json::to_string(&msg).unwrap();
             // todo: async, do send in other thread
-            obj.SendMsg("api", &info);
+            obj.SendMsg("request", &info);
             return HttpResponse::Ok()
                     .content_type("application/json")
                     .body(resp.mssage);
