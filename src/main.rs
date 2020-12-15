@@ -24,7 +24,7 @@ mod mq;
 mod ws;
 use crate::ws::relay::{WSProxy, RunWebSocketBg};
 
-use crossbeam_channel::bounded;
+use crossbeam_channel::unbounded;
 use crate::http::server::MessageSender;
 
 fn main() {
@@ -54,7 +54,7 @@ fn main() {
 
     let vali = Validator::new(config.stat.url);
 
-    let (tx, rx) = bounded(10);
+    let (tx, rx) = unbounded();
     let achainrpc = Arc::new(chainsRPC);
     // rocket server
     // let rpcSvr = HttpServer::new(achainrpc.clone(), vali.clone(), MessageSender::<(String, String)>::new(tx.clone()));
