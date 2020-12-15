@@ -48,7 +48,6 @@ impl HttpRequest {
                         debug!("Got content:\n{:?}\n",  b);
                         return (b, true);
                     },
-                    // Ok(b) => println!("Got {} bytes\nheader:\n{:?}\n", b.len(), b),
                     Err(e) => {
                         error!("Got an error: {}", e);
                         return (BodyResp{code:-1, mssage:"".to_string(), data:None}, false);
@@ -74,7 +73,6 @@ impl HttpRequest {
                         debug!("Got content:\n{:?}\n",  b);
                         return (BodyResp{code:b.code, mssage:b.message.to_owned(), data:None}, true);
                     },
-                    // Ok(b) => println!("Got {} bytes\nheader:\n{:?}\n", b.len(), b),
                     Err(e) => {
                         error!("Got an error: {}", e);
                         return (BodyResp{code:-1, mssage:"".to_string(), data:None}, false);
@@ -100,7 +98,6 @@ impl HttpRequest {
                         debug!("Got content:\n{:?}\n",  b);
                         return (BodyResp{code:b.code, mssage:b.message.to_owned(), data:None}, true);
                     },
-                    // Ok(b) => println!("Got {} bytes\nheader:\n{:?}\n", b.len(), b),
                     Err(e) => {
                         debug!("Got an error: {}", e);
                         return (BodyResp{code:-1, mssage:"".to_string(), data:None}, false);
@@ -129,7 +126,6 @@ impl HttpRequest {
                         ret.mssage = String::from_utf8_lossy(&b).to_string();
                         return (ret, true);
                     },
-                    // Ok(b) => println!("Got {} bytes\nheader:\n{:?}\n", b.len(), b),
                     Err(e) => {
                         error!("Got an error: {}", e);
                         return (ret, false);

@@ -4,7 +4,6 @@ use rocket::http::{Method};
 use serde::{Serialize, Deserialize};
 use rocket_contrib::json::{Json};
 use rocket::handler::{self, Handler};
-// use futures::executor::block_on;
 use super::validator::Validator;
 use super::request::*;
 use super::curl::*;
@@ -40,12 +39,8 @@ pub struct KafkaInfo {
 #[derive(Clone)]
 pub struct HttpServer {
     target: Arc<HashMap<String, String>>,
-    // validator: Arc<Mutex<Validator>>,
     validator: Validator,
     client: RequestCurl,
-    // client: RequestMock, // for mock test
-    // sender: KafkaProducerSmol,
-    // txCh: crossbeam_channel::Sender<(String, String)>
     txCh: MessageSender<(String, String)>
 }
 
@@ -70,7 +65,6 @@ impl ReqMessage {
 impl HttpServer {
     pub fn new(target: Arc<HashMap<String, String>>, vali: Validator, tx: MessageSender<(String, String)>) -> Self {
         HttpServer{target: target, validator: vali, client: RequestCurl, txCh: tx}
-        // HttpServer{target: target, validator: vali, client: RequestMock, txCh: tx} // for mock test
     }
 
     pub fn Start(self) {
@@ -99,10 +93,9 @@ impl Handler for HttpServer {
             info!("{:?}", apid);
             pid = apid;
         }
-        // let checker = self.validator.clone();
+
         // verify chain and project
         {
-            // let verifier = checker.lock().unwrap();
             let verifier = self.validator.clone();
             let path = "/".to_string()+&chain+"/"+&pid;
             if !verifier.CheckLimit(path) {
@@ -127,13 +120,10 @@ impl Handler for HttpServer {
             let end = Utc::now();
             let msg = KafkaInfo{key: "request".to_string(), message:parseRequest(req, &resp.data.unwrap_or("null".to_string()), &chain, &pid, &contents, start, end)};
             let info = serde_json::to_string(&msg).unwrap();
-            // todo: async, do send in other thread
-            // block_on(self.sender.sendMsg("api", &info));
             self.SendMsg("api", &info);
             return handler::Outcome::from(req, resp.mssage);
         }
 
-        // todo: kafka
         handler::Outcome::from(req, Json(ApiResp{code:-4, message:"no response".to_string(), data:None}))
     }
 }
@@ -159,8 +149,7 @@ fn parseRequest(req: &Request, resp: &str, chain: &str, pid: &str, param: &str, 
             break;
         }
     }
-    
-    // println!("accept:{:?}, req head:{:?} heads: [{}] {:?}, {:?}", req.accept(), req.headers(), sliceHead.len(), sliceHead, rHeads);
+
     let mut msg = ReqMessage::new();
     msg.protocol = rHeads[0].to_string(); //rocket cannot get request protocol
     msg.ip = format!("{:?}",req.client_ip().unwrap_or(IpAddr::V4(Ipv4Addr::new(127, 127, 127, 127))));
@@ -173,7 +162,7 @@ fn parseRequest(req: &Request, resp: &str, chain: &str, pid: &str, param: &str, 
     msg.bandwidth = band;
     msg.start = start;
     msg.end = end;
-    // println!("{:?}", msg);
+
     msg
 }
 

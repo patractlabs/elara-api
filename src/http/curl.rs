@@ -21,7 +21,6 @@ impl RequestCurl {
             let mut transfer = handle.transfer();
             if let Err(e) = transfer.write_function(|data| {
                 buf.extend_from_slice(data);
-                // println!("{:?}", buf);
                 Ok(data.len())
             }) {
                 ret.mssage = format!("{:?}", e);
@@ -91,17 +90,9 @@ impl RequestCurl {
             }
 
             transfer.header_function(|data| {
-                // println!("header: {}", String::from_utf8_lossy(data));
                 head.extend_from_slice(data);
                 true
             }).unwrap();
-            // if let Err(e) = transfer.header_function(|data| {
-            //     println!("header: {}", String::from_utf8_lossy(data));
-            //     true
-            // }) {
-            //     ret.mssage = format!("{:?}", e);
-            //     return (ret, false);
-            // } //segment fault
 
             if let Err(e) = transfer.perform() {
                 error!("error: {}", e);

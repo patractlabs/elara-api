@@ -56,8 +56,6 @@ fn main() {
 
     let (tx, rx) = unbounded();
     let achainrpc = Arc::new(chainsRPC);
-    // rocket server
-    // let rpcSvr = HttpServer::new(achainrpc.clone(), vali.clone(), MessageSender::<(String, String)>::new(tx.clone()));
 
     //actix server
     let rpcSvr = ActixWebServer::new(achainrpc.clone(), vali.clone(), MessageSender::<(String, String)>::new(tx.clone()));
@@ -68,8 +66,6 @@ fn main() {
     let wsSvr = WSProxy::new(config.ws.url, achainws.clone(), vali.clone(), MessageSender::<(String, String)>::new(tx.clone()));
 
     notifier.Start();
-    // rpcSvr.Start();
-    // wsSvr.Start().await;
     RunWebSocketBg(wsSvr);
     RunServer(rpcSvr, config.http.port);
 }

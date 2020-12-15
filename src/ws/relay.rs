@@ -1,13 +1,5 @@
-// use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
-// use tungstenite::accept_hdr;
 use tungstenite::handshake::server::{Request, Response};
-// use tungstenite::{connect};
 use url::Url;
-
-// use tungstenite::protocol::WebSocket;
-// use tungstenite::client::AutoStream;
-// use tungstenite::protocol::Message;
-
 use std::sync::{Arc};
 use std::collections::HashMap;
 use crate::http::validator::Validator;
@@ -24,7 +16,6 @@ use futures_channel::mpsc::{unbounded};
 pub struct WSProxy {
     url: String,
     target: Arc<HashMap<String, String>>,
-    // validator: Arc<Mutex<Validator>>,
     validator: Validator,
     txCh: MessageSender<(String, String)>
 }
@@ -60,7 +51,6 @@ impl WSProxy {
             let chains = self.target.clone();
             let caster = self.txCh.clone();
             task::spawn(async move {
-            // std::thread::spawn( move || {
                 let mut path = String::new();
                 let clientIp = format!("{}", addr);
                 info!("client ip: {}", clientIp);
@@ -89,11 +79,9 @@ impl WSProxy {
                 let pathSeg = pathStr.split("/").collect::<Vec<&str>>();
                 // verify chain and project
                 {
-                    // let verifier = checker.lock().unwrap();
                     let verifier = checker;
                     if !verifier.CheckLimit(path) {
                         error!("project not exist");
-                        // targetSocket.close(None);
                         websocket.close(None);
                         return;
                     }
@@ -119,7 +107,6 @@ impl WSProxy {
                         
                     } else if msg.is_close() {
                         debug!("server close {}", msg);
-                        // return future::err(()); // compile error
                     }
                     future::ok(())
                 });
@@ -133,7 +120,6 @@ impl WSProxy {
 
                     } else if msg.is_close() {
                         debug!("client close {}", msg);
-                        // return future::err(()); // compile error
                     }
                     let mut reqMsg = newReqMessage(&msgTemp);
                     reqMsg.req = req;

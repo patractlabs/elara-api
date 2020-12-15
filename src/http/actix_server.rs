@@ -116,7 +116,6 @@ fn parseActixRequest(req: &HttpRequest, resp: &str, chain: &str, pid: &str, para
         }
     }
     
-    // println!("accept:{:?}, req head:{:?} heads: [{}] {:?}, {:?}", req.accept(), req.headers(), sliceHead.len(), sliceHead, rHeads);
     let mut msg = ReqMessage::new();
     msg.protocol = rHeads[0].to_string(); //rocket cannot get request protocol
     msg.ip = format!("{:?}",req.peer_addr().unwrap_or(SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 127, 127, 127)), 8888)));
@@ -129,6 +128,6 @@ fn parseActixRequest(req: &HttpRequest, resp: &str, chain: &str, pid: &str, para
     msg.bandwidth = band;
     msg.start = start;
     msg.end = end;
-    // println!("{:?}", msg);
+
     msg
 }
