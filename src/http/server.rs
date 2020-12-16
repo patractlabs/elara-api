@@ -1,5 +1,4 @@
 use serde::{Serialize, Deserialize};
-use chrono::{DateTime, Utc};
 use crate::mq::producer_smol::*;
 use log::*;
 
@@ -15,8 +14,8 @@ pub struct ReqMessage {
     pub resp: String,
     pub code: String,
     pub bandwidth: String,
-    pub start: DateTime<Utc>,
-    pub end: DateTime<Utc>
+    pub start: i64,
+    pub end: i64
 }
 #[derive(Serialize, Deserialize, Debug)]
 pub struct KafkaInfo {
@@ -37,8 +36,8 @@ impl ReqMessage {
             resp: String::new(),
             code: String::new(),
             bandwidth: String::new(),
-            start: Utc::now(),
-            end: Utc::now()
+            start: 0,
+            end: 0
         }
     }
 }
@@ -88,4 +87,12 @@ impl <T> MessageSender<T> {
         }
         true
     }
+}
+
+pub fn parseIp(forward: &str, defaultIp: String) -> String {
+    let ips = forward.split(", ").collect::<Vec<&str>>();
+    if ips[0] != "" {
+        return ips[0].to_string();
+    }
+    defaultIp
 }

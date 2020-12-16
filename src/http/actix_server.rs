@@ -2,14 +2,14 @@ use std::collections::HashMap;
 use super::validator::Validator;
 use super::request::*;
 use super::curl::*;
-use chrono::{DateTime, Utc};
+use chrono::{Utc};
 use log::*;
 use actix_web::{get, middleware, web, App, HttpRequest, HttpResponse, HttpServer};
 use actix_web::web::Data;
 use std::sync::{Arc};
-use crate::http::server::{MessageSender, ReqMessage, KafkaInfo};
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use crate::http::server::{MessageSender, ReqMessage, KafkaInfo, parseIp};
 use futures_util::StreamExt;
+use serde_json::{Value};
 
 #[derive(Clone)]
 pub struct ActixWebServer {
@@ -82,10 +82,10 @@ async fn transfer(obj: Data<ActixWebServer>, req: HttpRequest, web::Path((chain,
         let contents = String::from_utf8_lossy(&bytes).to_string();
         debug!("content:{}", contents);
 
-        let start = Utc::now();
+        let start = Utc::now().timestamp_millis();
         let (resp, ok) = obj.client.Rpc(&chainAddr, contents.clone());
         if ok {
-            let end = Utc::now();
+            let end = Utc::now().timestamp_millis();
             let msg = KafkaInfo{key: "request".to_string(), message:parseActixRequest(&req, &resp.data.unwrap_or("null".to_string()), &chain, &pid, &contents, start, end)};
             let info = serde_json::to_string(&msg).unwrap();
             // todo: async, do send in other thread
@@ -100,7 +100,7 @@ async fn transfer(obj: Data<ActixWebServer>, req: HttpRequest, web::Path((chain,
                 .body(body);
 }
 
-fn parseActixRequest(req: &HttpRequest, resp: &str, chain: &str, pid: &str, param: &str, start: DateTime<Utc>, end: DateTime<Utc>) -> ReqMessage {
+fn parseActixRequest(req: &HttpRequest, resp: &str, chain: &str, pid: &str, param: &str, start: i64, end: i64) -> ReqMessage {
     let sliceHead = resp.split("\r\n").collect::<Vec<&str>>();
     let rHeads = sliceHead[0].split(" ").collect::<Vec<&str>>();
     let length = sliceHead.len()-3;
@@ -118,11 +118,18 @@ fn parseActixRequest(req: &HttpRequest, resp: &str, chain: &str, pid: &str, para
     
     let mut msg = ReqMessage::new();
     msg.protocol = rHeads[0].to_string(); //rocket cannot get request protocol
-    msg.ip = format!("{:?}",req.peer_addr().unwrap_or(SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 127, 127, 127)), 8888)));
+    let mut clientIp = "127.127.127.127".to_string();
+    if let Some(forwards) = req.headers().get("x-forward-for") {
+        clientIp = parseIp(forwards.to_str().unwrap_or(""), clientIp.clone());
+    }
+    msg.ip = clientIp;
     msg.header = format!("{:?}", req.headers());
     msg.chain = chain.to_string();
     msg.pid = pid.to_string();
-    msg.method = req.method().as_str().to_string();
+    let deserialized: Value = serde_json::from_str(&param).unwrap();
+    let noMethod = Value::String("no method".to_string());
+    let method = deserialized.get("method").unwrap_or(&noMethod).as_str().unwrap();
+    msg.method = method.to_string();
     msg.req = param.to_string();
     msg.code = rHeads[1].to_string();
     msg.bandwidth = band;

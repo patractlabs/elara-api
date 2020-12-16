@@ -4,7 +4,7 @@ use std::sync::{Arc};
 use std::collections::HashMap;
 use crate::http::validator::Validator;
 use log::*;
-use crate::http::server::{MessageSender, ReqMessage, KafkaInfo};
+use crate::http::server::{MessageSender, ReqMessage, KafkaInfo, parseIp};
 use chrono::{Utc};
 use async_tungstenite::{WebSocketStream, accept_hdr_async};
 use async_tungstenite::async_std::connect_async;
@@ -12,6 +12,7 @@ use async_std::net::{TcpListener, TcpStream};
 use async_std::task;
 use futures_util::{future, pin_mut, stream::TryStreamExt, StreamExt};
 use futures_channel::mpsc::{unbounded};
+use serde_json::{Value};
 
 pub struct WSProxy {
     url: String,
@@ -52,7 +53,7 @@ impl WSProxy {
             let caster = self.txCh.clone();
             task::spawn(async move {
                 let mut path = String::new();
-                let clientIp = format!("{}", addr);
+                let mut clientIp = format!("{}", addr);
                 info!("client ip: {}", clientIp);
                 let mut msgTemp = ReqMessage::new();
                 
@@ -63,6 +64,9 @@ impl WSProxy {
                     info!("The request's headers are:");
                     for (ref header, _value) in req.headers() {
                         info!("* {}", header);
+                    }
+                    if let Some(forwards) = req.headers().get("x-forward-for") {
+                        clientIp = parseIp(forwards.to_str().unwrap_or(""), clientIp.clone());
                     }
 
                     makeReqMessageTemplate(&mut msgTemp, req, clientIp);
@@ -103,8 +107,21 @@ impl WSProxy {
                     if msg.is_binary() || msg.is_text() {
                         debug!("proxy rcv server: {}", msg);
                         txS2C.unbounded_send(msg.clone()).unwrap();
-
-                        
+                        let contents = msg.into_text().unwrap();
+                        let deserialized: Value = serde_json::from_str(&contents).unwrap();
+                        let mut reqMsg = newReqMessage(&msgTemp);
+                        if let Some(value) = deserialized.get("method") {
+                            if let Some(method) = value.as_str() {
+                                reqMsg.method = method.to_string();
+                            }
+                        }
+                        reqMsg.bandwidth = contents.len().to_string();
+                        reqMsg.start = Utc::now().timestamp_millis();
+                        reqMsg.end = reqMsg.start;
+                        reqMsg.code = "200".to_string();
+                        let msg = KafkaInfo{key: "request".to_string(), message:reqMsg};
+                        let info = serde_json::to_string(&msg).unwrap();
+                        caster.Send(("request".to_string(), info));
                     } else if msg.is_close() {
                         debug!("server close {}", msg);
                     }
@@ -121,13 +138,6 @@ impl WSProxy {
                     } else if msg.is_close() {
                         debug!("client close {}", msg);
                     }
-                    let mut reqMsg = newReqMessage(&msgTemp);
-                    reqMsg.req = req;
-                    reqMsg.start = Utc::now();
-                    reqMsg.code = "200".to_string();
-                    let msg = KafkaInfo{key: "request".to_string(), message:reqMsg};
-                    let info = serde_json::to_string(&msg).unwrap();
-                    caster.Send(("request".to_string(), info));
 
                     future::ok(())
                 });
@@ -158,7 +168,6 @@ fn makeReqMessageTemplate(msg: &mut ReqMessage, req: &Request, client: String) {
     let pathSeg = path.split("/").collect::<Vec<&str>>();
     msg.chain = pathSeg[1].to_string();
     msg.pid = pathSeg[2].to_string();
-    msg.method = req.method().as_str().to_string();
     msg.header = format!("{:?}", req.headers());
 }
 
@@ -168,7 +177,7 @@ fn newReqMessage(temp: &ReqMessage) -> ReqMessage {
     msg.ip = temp.ip.clone();
     msg.chain = temp.chain.clone();
     msg.pid = temp.pid.clone();
-    msg.method = temp.method.clone();
     msg.header = temp.header.clone();
+    msg.method = "no method".to_string();
     msg
 }
