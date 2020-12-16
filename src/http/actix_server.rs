@@ -6,8 +6,9 @@ use chrono::{Utc};
 use log::*;
 use actix_web::{get, middleware, web, App, HttpRequest, HttpResponse, HttpServer};
 use actix_web::web::Data;
+use actix_web::http::HeaderMap;
 use std::sync::{Arc};
-use crate::http::server::{MessageSender, ReqMessage, parseIp};
+use crate::http::server::{MessageSender, ReqMessage};
 use futures_util::StreamExt;
 use serde_json::{Value};
 
@@ -120,10 +121,12 @@ fn parseActixRequest(req: &HttpRequest, resp: &str, chain: &str, pid: &str, para
     msg.protocol = rHeads[0].to_string(); //rocket cannot get request protocol
     let mut clientIp = "127.127.127.127".to_string();
     if let Some(forwards) = req.headers().get("x-forwarded-for") {
-        clientIp = parseIp(forwards.to_str().unwrap_or(""), clientIp.clone());
+        if let Ok(ip) = forwards.to_str() {
+            clientIp = ip.to_string();
+        }
     }
-    msg.ip = clientIp;
-    msg.header = format!("{:?}", req.headers());
+    msg.ip = clientIp.to_string();
+    msg.header = headerString(req.headers());
     msg.chain = chain.to_string();
     msg.pid = pid.to_string();
     let deserialized: Value = serde_json::from_str(&param).unwrap();
@@ -137,4 +140,14 @@ fn parseActixRequest(req: &HttpRequest, resp: &str, chain: &str, pid: &str, para
     msg.end = end;
 
     msg
+}
+
+fn headerString(h: &HeaderMap) -> String {
+    let mut container = HashMap::new();
+    for (key, value) in h.iter() {
+        let k = key.as_str();
+        let v = value.to_str().unwrap();
+        container.insert(k, v);
+    }
+    serde_json::to_string(&container).unwrap()
 }

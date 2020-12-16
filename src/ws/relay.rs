@@ -4,7 +4,7 @@ use std::sync::{Arc};
 use std::collections::HashMap;
 use crate::http::validator::Validator;
 use log::*;
-use crate::http::server::{MessageSender, ReqMessage, parseIp};
+use crate::http::server::{MessageSender, ReqMessage};
 use chrono::{Utc};
 use async_tungstenite::{WebSocketStream, accept_hdr_async};
 use async_tungstenite::async_std::connect_async;
@@ -66,7 +66,9 @@ impl WSProxy {
                         info!("* {}", header);
                     }
                     if let Some(forwards) = req.headers().get("x-forwarded-for") {
-                        clientIp = parseIp(forwards.to_str().unwrap_or(""), clientIp.clone());
+                        if let Ok(ip) = forwards.to_str() {
+                            clientIp = ip.to_string();
+                        }
                     }
 
                     makeReqMessageTemplate(&mut msgTemp, req, clientIp);
@@ -92,7 +94,7 @@ impl WSProxy {
                 }
                 // connect server
                 if !chains.contains_key(pathSeg[1]) {
-                    println!("chain {} not configured", pathSeg[1]);
+                    error!("chain {} not configured", pathSeg[1]);
                     websocket.close(None);
                     return;
                 }
@@ -114,6 +116,8 @@ impl WSProxy {
                             if let Some(method) = value.as_str() {
                                 reqMsg.method = method.to_string();
                             }
+                        } else {
+                            warn!("proxy rcv-method server: {}", msg);
                         }
                         reqMsg.bandwidth = contents.len().to_string().parse::<u32>().unwrap();
                         reqMsg.start = Utc::now().timestamp_millis();
@@ -167,7 +171,6 @@ fn makeReqMessageTemplate(msg: &mut ReqMessage, req: &Request, client: String) {
     let pathSeg = path.split("/").collect::<Vec<&str>>();
     msg.chain = pathSeg[1].to_string();
     msg.pid = pathSeg[2].to_string();
-    msg.header = format!("{:?}", req.headers());
 }
 
 fn newReqMessage(temp: &ReqMessage) -> ReqMessage {
@@ -176,7 +179,6 @@ fn newReqMessage(temp: &ReqMessage) -> ReqMessage {
     msg.ip = temp.ip.clone();
     msg.chain = temp.chain.clone();
     msg.pid = temp.pid.clone();
-    msg.header = temp.header.clone();
     msg.method = "no method".to_string();
     msg
 }
