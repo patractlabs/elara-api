@@ -117,7 +117,7 @@ impl WSProxy {
                                 reqMsg.method = method.to_string();
                             }
                         } else {
-                            warn!("proxy rcv-method server: {}", msg);
+                            warn!("proxy rcv-method server: {}", contents);
                         }
                         reqMsg.bandwidth = contents.len().to_string().parse::<u32>().unwrap();
                         reqMsg.start = Utc::now().timestamp_millis();
