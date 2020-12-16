@@ -1,11 +1,12 @@
 use serde::{Serialize, Deserialize};
 use crate::mq::producer_smol::*;
 use log::*;
+use std::collections::HashMap;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ReqMessage {
     pub protocol: String,
-    pub header: String,
+    pub header: HashMap<String, String>,
     pub ip: String,
     pub chain: String,
     pub pid: String,
@@ -27,7 +28,7 @@ impl ReqMessage {
     pub fn new() -> Self {
         ReqMessage{
             protocol: String::new(),
-            header: String::new(),
+            header: HashMap::new(),
             ip: String::new(),
             chain: String::new(),
             pid: String::new(),

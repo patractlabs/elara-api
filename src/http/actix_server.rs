@@ -142,12 +142,12 @@ fn parseActixRequest(req: &HttpRequest, resp: &str, chain: &str, pid: &str, para
     msg
 }
 
-fn headerString(h: &HeaderMap) -> String {
+fn headerString(h: &HeaderMap) -> HashMap<String, String> {
     let mut container = HashMap::new();
     for (key, value) in h.iter() {
-        let k = key.as_str();
-        let v = value.to_str().unwrap();
+        let k = key.as_str().to_string();
+        let v = value.to_str().unwrap().to_string();
         container.insert(k, v);
     }
-    serde_json::to_string(&container).unwrap()
+    container
 }
