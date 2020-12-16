@@ -12,8 +12,8 @@ pub struct ReqMessage {
     pub method: String,
     pub req: String,
     pub resp: String,
-    pub code: String,
-    pub bandwidth: String,
+    pub code: u32,
+    pub bandwidth: u32,
     pub start: i64,
     pub end: i64
 }
@@ -34,8 +34,8 @@ impl ReqMessage {
             method: String::new(),
             req: String::new(),
             resp: String::new(),
-            code: String::new(),
-            bandwidth: String::new(),
+            code: 0,
+            bandwidth: 0,
             start: 0,
             end: 0
         }

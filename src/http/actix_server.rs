@@ -7,7 +7,7 @@ use log::*;
 use actix_web::{get, middleware, web, App, HttpRequest, HttpResponse, HttpServer};
 use actix_web::web::Data;
 use std::sync::{Arc};
-use crate::http::server::{MessageSender, ReqMessage, KafkaInfo, parseIp};
+use crate::http::server::{MessageSender, ReqMessage, parseIp};
 use futures_util::StreamExt;
 use serde_json::{Value};
 
@@ -86,7 +86,7 @@ async fn transfer(obj: Data<ActixWebServer>, req: HttpRequest, web::Path((chain,
         let (resp, ok) = obj.client.Rpc(&chainAddr, contents.clone());
         if ok {
             let end = Utc::now().timestamp_millis();
-            let msg = KafkaInfo{key: "request".to_string(), message:parseActixRequest(&req, &resp.data.unwrap_or("null".to_string()), &chain, &pid, &contents, start, end)};
+            let msg = parseActixRequest(&req, &resp.data.unwrap_or("null".to_string()), &chain, &pid, &contents, start, end);
             let info = serde_json::to_string(&msg).unwrap();
             // todo: async, do send in other thread
             obj.SendMsg("request", &info);
@@ -131,8 +131,8 @@ fn parseActixRequest(req: &HttpRequest, resp: &str, chain: &str, pid: &str, para
     let method = deserialized.get("method").unwrap_or(&noMethod).as_str().unwrap();
     msg.method = method.to_string();
     msg.req = param.to_string();
-    msg.code = rHeads[1].to_string();
-    msg.bandwidth = band;
+    msg.code = rHeads[1].to_string().parse::<u32>().unwrap_or(200);
+    msg.bandwidth = band.parse::<u32>().unwrap_or(0);
     msg.start = start;
     msg.end = end;
 

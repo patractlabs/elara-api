@@ -4,7 +4,7 @@ use std::sync::{Arc};
 use std::collections::HashMap;
 use crate::http::validator::Validator;
 use log::*;
-use crate::http::server::{MessageSender, ReqMessage, KafkaInfo, parseIp};
+use crate::http::server::{MessageSender, ReqMessage, parseIp};
 use chrono::{Utc};
 use async_tungstenite::{WebSocketStream, accept_hdr_async};
 use async_tungstenite::async_std::connect_async;
@@ -115,12 +115,11 @@ impl WSProxy {
                                 reqMsg.method = method.to_string();
                             }
                         }
-                        reqMsg.bandwidth = contents.len().to_string();
+                        reqMsg.bandwidth = contents.len().to_string().parse::<u32>().unwrap();
                         reqMsg.start = Utc::now().timestamp_millis();
                         reqMsg.end = reqMsg.start;
-                        reqMsg.code = "200".to_string();
-                        let msg = KafkaInfo{key: "request".to_string(), message:reqMsg};
-                        let info = serde_json::to_string(&msg).unwrap();
+                        reqMsg.code = 200;
+                        let info = serde_json::to_string(&reqMsg).unwrap();
                         caster.Send(("request".to_string(), info));
                     } else if msg.is_close() {
                         debug!("server close {}", msg);
