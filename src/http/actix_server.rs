@@ -119,7 +119,7 @@ fn parseActixRequest(req: &HttpRequest, resp: &str, chain: &str, pid: &str, para
     let mut msg = ReqMessage::new();
     msg.protocol = rHeads[0].to_string(); //rocket cannot get request protocol
     let mut clientIp = "127.127.127.127".to_string();
-    if let Some(forwards) = req.headers().get("x-forward-for") {
+    if let Some(forwards) = req.headers().get("x-forwarded-for") {
         clientIp = parseIp(forwards.to_str().unwrap_or(""), clientIp.clone());
     }
     msg.ip = clientIp;

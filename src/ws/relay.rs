@@ -65,7 +65,7 @@ impl WSProxy {
                     for (ref header, _value) in req.headers() {
                         info!("* {}", header);
                     }
-                    if let Some(forwards) = req.headers().get("x-forward-for") {
+                    if let Some(forwards) = req.headers().get("x-forwarded-for") {
                         clientIp = parseIp(forwards.to_str().unwrap_or(""), clientIp.clone());
                     }
 
