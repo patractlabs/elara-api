@@ -144,11 +144,12 @@ impl WSProxy {
                         debug!("proxy rcv client: {}", msg);
                         txC2S.unbounded_send(msg.clone()).unwrap();
                         let contents = msg.into_text().unwrap();
-                        let deserialized: Value = serde_json::from_str(&contents).unwrap();
-                        if let Some(value) = deserialized.get("method") {
-                            if let Some(method) = value.as_str() {
-                                let mut cm = cacheMethod.lock().unwrap();
-                                *cm = method.to_string();
+                        if let Ok(deserialized) = serde_json::from_str::<Value>(&contents) {
+                            if let Some(value) = deserialized.get("method") {
+                                if let Some(method) = value.as_str() {
+                                    let mut cm = cacheMethod.lock().unwrap();
+                                    *cm = method.to_string();
+                                }
                             }
                         }
                     } else if msg.is_close() {
