@@ -854,6 +854,7 @@ dependencies = [
  "futures",
  "futures-channel",
  "futures-util",
+ "http",
  "libc",
  "log",
  "rdkafka",

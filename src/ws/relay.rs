@@ -1,6 +1,6 @@
 use tungstenite::handshake::server::{Request, Response};
 use url::Url;
-use std::sync::{Arc};
+use std::sync::{Arc, Mutex};
 use std::collections::HashMap;
 use crate::http::validator::Validator;
 use log::*;
@@ -13,6 +13,7 @@ use async_std::task;
 use futures_util::{future, pin_mut, stream::TryStreamExt, StreamExt};
 use futures_channel::mpsc::{unbounded};
 use serde_json::{Value};
+use http::header::HeaderMap;
 
 pub struct WSProxy {
     url: String,
@@ -105,6 +106,9 @@ impl WSProxy {
                 let (txS2C, rxS2C) = unbounded();
                 let (txC2S, rxC2S) = unbounded();
 
+                let gMethod = Arc::new(Mutex::new(String::new()));
+
+                let defaultMethod = gMethod.clone();
                 let svrIncomingHandler = svrHandleRd.try_for_each(move |msg| {
                     if msg.is_binary() || msg.is_text() {
                         debug!("proxy rcv server: {}", msg);
@@ -117,7 +121,8 @@ impl WSProxy {
                                 reqMsg.method = method.to_string();
                             }
                         } else {
-                            warn!("proxy rcv-method server: {}", contents);
+                            reqMsg.method = defaultMethod.lock().unwrap().to_string();
+                            warn!("proxy rcv-method server: {}; default method: {}", contents, reqMsg.method);
                         }
                         reqMsg.bandwidth = contents.len().to_string().parse::<u32>().unwrap();
                         reqMsg.start = Utc::now().timestamp_millis();
@@ -132,12 +137,20 @@ impl WSProxy {
                 });
                 let SendClientHandler = rxS2C.map(Ok).forward(clientHandleWr);
 
+                let cacheMethod = gMethod.clone();
                 let clientIncomingHandler = clientHandleRd.try_for_each( |msg| {
                     let req = format!("{}", msg);
                     if msg.is_binary() || msg.is_text() {
                         debug!("proxy rcv client: {}", msg);
                         txC2S.unbounded_send(msg.clone()).unwrap();
-
+                        let contents = msg.into_text().unwrap();
+                        let deserialized: Value = serde_json::from_str(&contents).unwrap();
+                        if let Some(value) = deserialized.get("method") {
+                            if let Some(method) = value.as_str() {
+                                let mut cm = cacheMethod.lock().unwrap();
+                                *cm = method.to_string();
+                            }
+                        }
                     } else if msg.is_close() {
                         debug!("client close {}", msg);
                     }
@@ -171,6 +184,7 @@ fn makeReqMessageTemplate(msg: &mut ReqMessage, req: &Request, client: String) {
     let pathSeg = path.split("/").collect::<Vec<&str>>();
     msg.chain = pathSeg[1].to_string();
     msg.pid = pathSeg[2].to_string();
+    msg.header = headerString(req.headers());
 }
 
 fn newReqMessage(temp: &ReqMessage) -> ReqMessage {
@@ -179,6 +193,17 @@ fn newReqMessage(temp: &ReqMessage) -> ReqMessage {
     msg.ip = temp.ip.clone();
     msg.chain = temp.chain.clone();
     msg.pid = temp.pid.clone();
-    msg.method = "no method".to_string();
+    msg.method = String::new();
+    msg.header = temp.header.clone();
     msg
+}
+
+fn headerString(h: &HeaderMap) -> String {
+    let mut container = HashMap::new();
+    for (key, value) in h.iter() {
+        let k = key.as_str();
+        let v = value.to_str().unwrap();
+        container.insert(k, v);
+    }
+    serde_json::to_string(&container).unwrap()
 }
