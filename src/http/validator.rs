@@ -14,7 +14,7 @@ impl Validator {
     pub fn new(url: String) -> Self {
         // Validator{url: url, cache: Mutex::new(HashMap::<String, bool>::new())}
         // Validator{url: url, cache: RefCell::new(HashMap::<String, bool>::new())}
-        Validator{url: url}
+        Validator { url: url }
     }
     pub fn CheckLimit(&self, chainpid: String) -> bool {
         // let mut buf = self.cache.lock().unwrap();
@@ -28,12 +28,11 @@ impl Validator {
         // block_on(client.GetSimple("https://elara.patract.io/stat/chain"));//test
         // let (ret, ok) = block_on(client.Get(&(self.url.clone()+&chainpid)));
         let client = RequestCurl;
-        let (ret, ok) = client.Get(&(self.url.clone()+&chainpid));
+        let (ret, ok) = client.Get(&(self.url.clone() + &chainpid));
         if !ok {
             return false;
         }
         // buf.insert(chainpid, true);
-        return true;    
-        
+        return true;
     }
 }

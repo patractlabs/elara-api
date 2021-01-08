@@ -16,15 +16,15 @@ mod config;
 use crate::config::toml;
 
 mod http;
-use crate::http::server::{HttpServer, Broadcaster};
+use crate::http::server::{Broadcaster, HttpServer};
 use crate::http::validator::Validator;
 
 mod mq;
 mod ws;
 use crate::ws::relay::WSProxy;
 
-use crossbeam_channel::bounded;
 use crate::http::server::MessageSender;
+use crossbeam_channel::bounded;
 
 #[tokio::main]
 async fn main() {
@@ -32,11 +32,13 @@ async fn main() {
         .version("0.0.1")
         .author("Patract Lab")
         .about("commandline argument parsing")
-        .arg(Arg::with_name("file")
-                 .short("f")
-                 .long("file")
-                 .takes_value(true)
-                 .help("A config absolute file path"))
+        .arg(
+            Arg::with_name("file")
+                .short("f")
+                .long("file")
+                .takes_value(true)
+                .help("A config absolute file path"),
+        )
         .get_matches();
     let configFile = matches.value_of("file").unwrap();
 
@@ -56,11 +58,20 @@ async fn main() {
 
     let (tx, rx) = bounded(10);
     let achainrpc = Arc::new(chainsRPC);
-    let rpcSvr = HttpServer::new(achainrpc.clone(), vali.clone(), MessageSender::<(String, String)>::new(tx.clone()));
+    let rpcSvr = HttpServer::new(
+        achainrpc.clone(),
+        vali.clone(),
+        MessageSender::<(String, String)>::new(tx.clone()),
+    );
     let notifier = Broadcaster::new(config.kafka.url, config.kafka.topic, rx);
 
     let achainws = Arc::new(chainsWS);
-    let wsSvr = WSProxy::new(config.ws.url, achainws.clone(), vali.clone(), MessageSender::<(String, String)>::new(tx.clone()));
+    let wsSvr = WSProxy::new(
+        config.ws.url,
+        achainws.clone(),
+        vali.clone(),
+        MessageSender::<(String, String)>::new(tx.clone()),
+    );
 
     notifier.Start();
     rpcSvr.Start();
@@ -74,13 +85,12 @@ fn LogInit(cfg: &toml::LogConfig) {
         "Info" => LevelFilter::Info,
         "Debug" => LevelFilter::Debug,
         "Trace" => LevelFilter::Trace,
-        _ => LevelFilter::Off
+        _ => LevelFilter::Off,
     };
-    
-    CombinedLogger::init(
-        vec![
-            TermLogger::new(level, Config::default(), TerminalMode::Mixed), //terminal logger
-            // WriteLogger::new(LogLevelFilter::Info, Config::default(), File::create("my_rust_binary.log").unwrap()) //记录日志到"*.log"文件中
-        ]
-    ).unwrap();
+
+    CombinedLogger::init(vec![
+        TermLogger::new(level, Config::default(), TerminalMode::Mixed), //terminal logger
+                                                                        // WriteLogger::new(LogLevelFilter::Info, Config::default(), File::create("my_rust_binary.log").unwrap()) //记录日志到"*.log"文件中
+    ])
+    .unwrap();
 }

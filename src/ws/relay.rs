@@ -1,36 +1,45 @@
-use std::net::{TcpListener, Ipv4Addr, SocketAddr, SocketAddrV4};
+use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4, TcpListener};
 use tungstenite::accept_hdr;
+use tungstenite::connect;
 use tungstenite::handshake::server::{Request, Response};
-use tungstenite::{connect};
 use url::Url;
 
-use tungstenite::protocol::WebSocket;
 use tungstenite::client::AutoStream;
+use tungstenite::protocol::WebSocket;
 
-use std::sync::{Arc, Mutex};
-use std::collections::HashMap;
+use crate::http::server::{KafkaInfo, MessageSender, ReqMessage};
 use crate::http::validator::Validator;
+use chrono::Utc;
 use log::*;
-use crate::http::server::{MessageSender, ReqMessage, KafkaInfo};
-use chrono::{Utc};
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 
 pub struct WSProxy {
     url: String,
     target: Arc<HashMap<String, String>>,
     validator: Arc<Mutex<Validator>>,
-    txCh: MessageSender<(String, String)>
+    txCh: MessageSender<(String, String)>,
 }
 
 impl WSProxy {
-    pub fn new(url: String, target: Arc<HashMap<String, String>>, vali: Arc<Mutex<Validator>>, tx: MessageSender<(String, String)>) -> Self {
-        WSProxy{url: url, target: target, validator: vali, txCh: tx}
+    pub fn new(
+        url: String,
+        target: Arc<HashMap<String, String>>,
+        vali: Arc<Mutex<Validator>>,
+        tx: MessageSender<(String, String)>,
+    ) -> Self {
+        WSProxy {
+            url: url,
+            target: target,
+            validator: vali,
+            txCh: tx,
+        }
     }
 
     fn Connect(target: &str) -> Box<WebSocket<AutoStream>> {
         // connect real target
         info!("connect websocket server: {}", target);
-        let (socket, response) =
-            connect(Url::parse(target).unwrap()).expect("Can't connect");
+        let (socket, response) = connect(Url::parse(target).unwrap()).expect("Can't connect");
 
         info!("Connected to the server");
         info!("Response HTTP code: {}", response.status());
@@ -42,7 +51,7 @@ impl WSProxy {
         Box::new(socket)
     }
 
-    pub fn Start(& self) {
+    pub fn Start(&self) {
         info!("websocket listening {}", self.url);
         let server = TcpListener::bind(&self.url[..]).unwrap();
         for link in server.incoming() {
@@ -58,12 +67,20 @@ impl WSProxy {
             let chains = self.target.clone();
             let caster = self.txCh.clone();
             // tokio::spawn(async move {
-            std::thread::spawn( move || {
+            std::thread::spawn(move || {
                 let mut path = String::new();
-                let clientIp = format!("{}", stream.peer_addr().unwrap_or(SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(127, 127, 127, 127), 1111))));
+                let clientIp = format!(
+                    "{}",
+                    stream
+                        .peer_addr()
+                        .unwrap_or(SocketAddr::V4(SocketAddrV4::new(
+                            Ipv4Addr::new(127, 127, 127, 127),
+                            1111
+                        )))
+                );
                 info!("client ip: {}", clientIp);
                 let mut msgTemp = ReqMessage::new();
-                
+
                 let callback = |req: &Request, mut response: Response| {
                     info!("Received a new ws handshake");
                     path = req.uri().path().to_string();
@@ -102,60 +119,61 @@ impl WSProxy {
                     return;
                 }
                 let mut targetSocket = WSProxy::Connect(&chains[pathSeg[1]]);
-                
+
                 // tokio::spawn(move {
-                    loop {
-                        if let Ok(msg) = websocket.read_message() {
-                            let start = Utc::now();
-                            let req = format!("{}", msg);
-                            if msg.is_binary() || msg.is_text() {
-                                debug!("proxy rcv client: {}", msg);
-                                if let Err(e) = targetSocket.write_message(msg) {
-                                    error!("write server error {}", e);
-                                    break;
-                                }
-
-                                match targetSocket.read_message() {
-                                    Ok(msg) => {
-                                        if msg.is_binary() || msg.is_text() {
-                                            debug!("proxy rcv server: {}", msg);
-                                            if let Err(e) = websocket.write_message(msg) {
-                                                error!("write client error {}", e);
-                                                break;
-                                            }
-                                        } else if msg.is_close() {
-                                            debug!("server close {}", msg);
-                                            break;
-                                        }
-                                    },
-                                    Err(e) => {
-                                        error!("server error {}", e);
-                                        break;
-                                    }
-
-                                }
-                            } else if msg.is_close() {
-                                debug!("client close {}", msg);
+                loop {
+                    if let Ok(msg) = websocket.read_message() {
+                        let start = Utc::now();
+                        let req = format!("{}", msg);
+                        if msg.is_binary() || msg.is_text() {
+                            debug!("proxy rcv client: {}", msg);
+                            if let Err(e) = targetSocket.write_message(msg) {
+                                error!("write server error {}", e);
                                 break;
                             }
-                            let end = Utc::now();
-                            let mut reqMsg = newReqMessage(&msgTemp);
-                            reqMsg.req = req;
-                            reqMsg.start = start;
-                            reqMsg.end = end;
-                            reqMsg.code = "200".to_string();
-                            let msg = KafkaInfo{key: "request".to_string(), message:reqMsg};
-                            let info = serde_json::to_string(&msg).unwrap();
-                            caster.Send(("api".to_string(), info));
-                        } else {
-                            info!("client lost");
+
+                            match targetSocket.read_message() {
+                                Ok(msg) => {
+                                    if msg.is_binary() || msg.is_text() {
+                                        debug!("proxy rcv server: {}", msg);
+                                        if let Err(e) = websocket.write_message(msg) {
+                                            error!("write client error {}", e);
+                                            break;
+                                        }
+                                    } else if msg.is_close() {
+                                        debug!("server close {}", msg);
+                                        break;
+                                    }
+                                }
+                                Err(e) => {
+                                    error!("server error {}", e);
+                                    break;
+                                }
+                            }
+                        } else if msg.is_close() {
+                            debug!("client close {}", msg);
                             break;
                         }
-                        
+                        let end = Utc::now();
+                        let mut reqMsg = newReqMessage(&msgTemp);
+                        reqMsg.req = req;
+                        reqMsg.start = start;
+                        reqMsg.end = end;
+                        reqMsg.code = "200".to_string();
+                        let msg = KafkaInfo {
+                            key: "request".to_string(),
+                            message: reqMsg,
+                        };
+                        let info = serde_json::to_string(&msg).unwrap();
+                        caster.Send(("api".to_string(), info));
+                    } else {
+                        info!("client lost");
+                        break;
                     }
-                    info!("exit the link");
-                    targetSocket.close(None);
-                    websocket.close(None);
+                }
+                info!("exit the link");
+                targetSocket.close(None);
+                websocket.close(None);
                 // });
             });
         }
