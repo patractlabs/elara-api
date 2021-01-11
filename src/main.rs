@@ -1,96 +1,136 @@
-#![feature(async_closure)]
-#![feature(proc_macro_hygiene, decl_macro)]
-#![allow(non_snake_case)]
-#![allow(dead_code)]
-#![allow(unused_variables)]
-#![allow(unused_must_use)]
-
 use clap::{App, Arg};
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use log::{info, warn};
 
-use log::*;
-use simplelog::*;
+use rdkafka::client::ClientContext;
+use rdkafka::config::{ClientConfig, RDKafkaLogLevel};
+use rdkafka::consumer::stream_consumer::StreamConsumer;
+use rdkafka::consumer::{CommitMode, Consumer, ConsumerContext, Rebalance};
+use rdkafka::error::KafkaResult;
+use rdkafka::message::{Headers, Message};
+use rdkafka::topic_partition_list::TopicPartitionList;
+use rdkafka::util::get_rdkafka_version;
 
+use crate::example_utils::setup_logger;
+
+mod example_utils;
+mod kafka;
+mod websocket;
 mod config;
-use crate::config::toml;
 
-mod http;
-use crate::http::server::{Broadcaster, HttpServer};
-use crate::http::validator::Validator;
+struct CustomContext;
 
-mod mq;
-mod ws;
-use crate::ws::relay::WSProxy;
+impl ClientContext for CustomContext {}
 
-use crate::http::server::MessageSender;
-use crossbeam_channel::bounded;
-
-#[tokio::main]
-async fn main() {
-    let matches = App::new("elara api")
-        .version("0.0.1")
-        .author("Patract Lab")
-        .about("commandline argument parsing")
-        .arg(
-            Arg::with_name("file")
-                .short("f")
-                .long("file")
-                .takes_value(true)
-                .help("A config absolute file path"),
-        )
-        .get_matches();
-    let configFile = matches.value_of("file").unwrap();
-
-    let config = toml::ParseConfig(configFile);
-
-    LogInit(&config.log);
-    info!("{:?}", config);
-
-    let mut chainsWS = HashMap::new();
-    let mut chainsRPC = HashMap::new();
-    for item in config.chains {
-        chainsWS.insert(item.name.clone(), item.wsUrl);
-        chainsRPC.insert(item.name, item.rpcUrl);
+impl ConsumerContext for CustomContext {
+    fn pre_rebalance(&self, rebalance: &Rebalance) {
+        info!("Pre rebalance {:?}", rebalance);
     }
 
-    let vali = Arc::new(Mutex::new(Validator::new(config.stat.url)));
+    fn post_rebalance(&self, rebalance: &Rebalance) {
+        info!("Post rebalance {:?}", rebalance);
+    }
 
-    let (tx, rx) = bounded(10);
-    let achainrpc = Arc::new(chainsRPC);
-    let rpcSvr = HttpServer::new(
-        achainrpc.clone(),
-        vali.clone(),
-        MessageSender::<(String, String)>::new(tx.clone()),
-    );
-    let notifier = Broadcaster::new(config.kafka.url, config.kafka.topic, rx);
-
-    let achainws = Arc::new(chainsWS);
-    let wsSvr = WSProxy::new(
-        config.ws.url,
-        achainws.clone(),
-        vali.clone(),
-        MessageSender::<(String, String)>::new(tx.clone()),
-    );
-
-    notifier.Start();
-    rpcSvr.Start();
-    wsSvr.Start();
+    fn commit_callback(&self, result: KafkaResult<()>, _offsets: &TopicPartitionList) {
+        info!("Committing offsets: {:?}", result);
+    }
 }
 
-fn LogInit(cfg: &toml::LogConfig) {
-    let level = match &cfg.level[..] {
-        "Warn" => LevelFilter::Warn,
-        "Error" => LevelFilter::Error,
-        "Info" => LevelFilter::Info,
-        "Debug" => LevelFilter::Debug,
-        "Trace" => LevelFilter::Trace,
-        _ => LevelFilter::Off,
-    };
+// A type alias with your custom consumer can be created for convenience.
+type LoggingConsumer = StreamConsumer<CustomContext>;
 
-    CombinedLogger::init(vec![
-        TermLogger::new(level, Config::default(), TerminalMode::Mixed), //terminal logger
-                                                                        // WriteLogger::new(LogLevelFilter::Info, Config::default(), File::create("my_rust_binary.log").unwrap()) //记录日志到"*.log"文件中
-    ])
-    .unwrap();
+async fn consume_and_print(brokers: &str, group_id: &str, topics: &[&str]) {
+    let context = CustomContext;
+
+    let consumer: LoggingConsumer = ClientConfig::new()
+        .set("group.id", group_id)
+        .set("bootstrap.servers", brokers)
+        .set("enable.partition.eof", "false")
+        .set("session.timeout.ms", "6000")
+        .set("enable.auto.commit", "true")
+        //.set("statistics.interval.ms", "30000")
+        //.set("auto.offset.reset", "smallest")
+        .set_log_level(RDKafkaLogLevel::Debug)
+        .create_with_context(context)
+        .expect("Consumer creation failed");
+
+    consumer
+        .subscribe(&topics.to_vec())
+        .expect("Can't subscribe to specified topics");
+
+    loop {
+        match consumer.recv().await {
+            Err(e) => warn!("Kafka error: {}", e),
+            Ok(m) => {
+                let payload = match m.payload_view::<str>() {
+                    None => "",
+                    Some(Ok(s)) => s,
+                    Some(Err(e)) => {
+                        warn!("Error while deserializing message payload: {:?}", e);
+                        ""
+                    }
+                };
+                info!("key: '{:?}', payload: '{}', topic: {}, partition: {}, offset: {}, timestamp: {:?}",
+                      m.key(), payload, m.topic(), m.partition(), m.offset(), m.timestamp());
+                if let Some(headers) = m.headers() {
+                    for i in 0..headers.count() {
+                        let header = headers.get(i).unwrap();
+                        info!("  Header {:#?}: {:?}", header.0, header.1);
+                    }
+                }
+                consumer.commit_message(&m, CommitMode::Async).unwrap();
+            }
+        };
+    }
+}
+
+#[actix_web::main]
+async fn main() {
+    let matches = App::new("consumer example")
+        .version(option_env!("CARGO_PKG_VERSION").unwrap_or(""))
+        .about("Simple command line consumer")
+        .arg(
+            Arg::with_name("brokers")
+                .short("b")
+                .long("brokers")
+                .help("Broker list in kafka format")
+                .takes_value(true)
+                .default_value("localhost:9092"),
+        )
+        .arg(
+            Arg::with_name("group-id")
+                .short("g")
+                .long("group-id")
+                .help("Consumer group id")
+                .takes_value(true)
+                .default_value("example_consumer_group_id"),
+        )
+        .arg(
+            Arg::with_name("log-conf")
+                .long("log-conf")
+                .help("Configure the logging format (example: 'rdkafka=trace')")
+                .takes_value(true),
+        )
+        .arg(
+            Arg::with_name("topics")
+                .short("t")
+                .long("topics")
+                .help("Topic list")
+                .takes_value(true)
+                .multiple(true)
+                .required(true),
+        )
+        .get_matches();
+
+    setup_logger(true, matches.value_of("log-conf"));
+
+    let (version_n, version_s) = get_rdkafka_version();
+    info!("rd_kafka_version: 0x{:08x}, {}", version_n, version_s);
+
+    let topics = matches.values_of("topics").unwrap().collect::<Vec<&str>>();
+    let brokers = matches.value_of("brokers").unwrap();
+    let group_id = matches.value_of("group-id").unwrap();
+    println!("actix");
+    websocket::main();
+    println!("kafka");
+    consume_and_print(brokers, group_id, &topics).await;
 }
