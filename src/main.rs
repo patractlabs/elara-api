@@ -12,10 +12,11 @@ use rdkafka::util::get_rdkafka_version;
 
 use crate::example_utils::setup_logger;
 
+mod config;
 mod example_utils;
 mod kafka;
+mod message;
 mod websocket;
-mod config;
 
 struct CustomContext;
 

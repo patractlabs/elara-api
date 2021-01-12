@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="VcsDirectoryMappings">
+    <mapping directory="$PROJECT_DIR$" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/target/debug/build/rdkafka-sys-8ba7a34b89eb2832/out" vcs="Git" />
+  </component>
+</project>

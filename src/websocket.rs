@@ -1,30 +1,57 @@
 use actix::{Actor, StreamHandler};
 use actix_web::{web, App, Error, HttpRequest, HttpResponse, HttpServer};
 use actix_web_actors::ws;
-use rustls::{
-    internal::pemfile::{certs, pkcs8_private_keys},
-    AllowAnyAnonymousOrAuthenticatedClient, Certificate, RootCertStore, ServerConfig, Session,
-};
 
-use std::{any::Any, env, fs::File, io::BufReader, net::SocketAddr};
+use std::collections::{HashMap, HashSet};
 
-const CA_CERT: &str = "certs/rootCA.pem";
-const SERVER_CERT: &str = "certs/server-cert.pem";
-const SERVER_KEY: &str = "certs/server-key.pem";
+use crate::message::*;
+
+type Subscription = String;
+type RouteId = String;
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+struct Subscribed {
+    client_ids: Vec<String>,
+}
 
 /// Define HTTP actor
-struct MyWs;
+#[derive(Debug, Default)]
+pub struct WsSubscribeServer {
+    /// 多个 RouteId 订阅公用一个Subscription
+    // subscriptions: HashMap<Subscription, HashSet<RouteId>>,
 
-impl Actor for MyWs {
+    // TODO: support multiple consumers
+    // kafka_consumer:
+    // storage key -> vec<id> ++ subscription kafka data
+    subscribed_keys: HashMap<String, Vec<String>>,
+    // client_ids in the set subscribing all keys
+    subscribe_all_keys: HashSet<String>,
+}
+
+impl WsSubscribeServer {
+    fn handle_subscribe(&mut self, text: String) {
+        let msg: RequestMessage = serde_json::from_str(&*text)?;
+
+        // TODO: add route id
+        if msg.request.method == "state_subscribeStorage".to_string() {
+        } else {
+            unimplemented!()
+        }
+    }
+}
+
+impl Actor for WsSubscribeServer {
     type Context = ws::WebsocketContext<Self>;
 }
 
 /// Handler for ws::Message message
-impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for MyWs {
+impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WsSubscribeServer {
     fn handle(&mut self, msg: Result<ws::Message, ws::ProtocolError>, ctx: &mut Self::Context) {
         match msg {
             Ok(ws::Message::Ping(msg)) => ctx.pong(&msg),
-            Ok(ws::Message::Text(text)) => ctx.text(text),
+            Ok(ws::Message::Text(text)) => {
+                text.to_string();
+            }
             Ok(ws::Message::Binary(bin)) => ctx.binary(bin),
             _ => (),
         }
@@ -32,26 +59,14 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for MyWs {
 }
 
 async fn index(req: HttpRequest, stream: web::Payload) -> Result<HttpResponse, Error> {
-    let resp = ws::start(MyWs {}, &req, stream);
+    let resp = ws::start(WsSubscribeServer::default(), &req, stream);
     println!("{:?}", resp);
     resp
 }
 
 pub async fn main() -> std::io::Result<()> {
-    let mut cert_store = RootCertStore::empty();
-
-    // import CA cert
-    let ca_cert = &mut BufReader::new(File::open(CA_CERT)?);
-    cert_store
-        .add_pem_file(ca_cert)
-        .expect("root CA not added to store");
-    // set up client authentication requirements
-    let client_auth = AllowAnyAnonymousOrAuthenticatedClient::new(cert_store);
-    let config = ServerConfig::new(client_auth);
-
     let res = HttpServer::new(|| App::new().route("/ws/", web::get().to(index)))
-        .bind_rustls(("localhost", 8443), config)?
-        // .bind("127.0.0.1:8080")?
+        .bind("127.0.0.1:8080")?
         .run()
         .await;
 
