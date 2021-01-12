@@ -53,11 +53,11 @@ pub struct SubscriptionServer {
     // 一个ws长连接可以订阅多个链多种类型数据，而一种类型数据可以订阅多次，订阅多次可能会有重复情况，
     // 因为根据subscriber ID来区分，确实会重复推送
     // 而取消订阅也可以多次，根据 subscriber ID 来区分
-
+    //
     // 考虑需要处理的情况：
     // 首先是需要基本跟substrate返回值要一样
     // 处理重复订阅问题
-
+    //
     // subscriptions:  map (chain_name ++ method ++ client_id) -> (keys set + request id)
 
     // kafka_consumer:
@@ -136,6 +136,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SubscriptionServe
             Ok(ws::Message::Ping(msg)) => ctx.pong(&msg),
             Ok(ws::Message::Text(text)) => {
                 // TODO: handle async and error
+
                 self.handle_subscription(text.to_string());
             }
             Ok(ws::Message::Binary(bin)) => ctx.binary(bin),
@@ -154,12 +155,19 @@ async fn index(
     ws::start(server, &req, stream)
 }
 
+async fn welcome() -> &'static str {
+    "Welcome!"
+}
+
+// TODO: config
 pub async fn create_ws_server() -> std::io::Result<()> {
     HttpServer::new(|| {
         // TODO: config
         let consumer = Arc::new(KvConsumer::new(HashMap::new().into_iter(), LogLevel::Debug));
         App::new()
-            .route("/ws/", web::get().to(index))
+            .route("/ws", web::get().to(index))
+            .route("/", web::get().to(welcome))
+            .default_service(web::to(|| HttpResponse::NotFound()))
             .data(consumer.clone())
     })
     .bind("127.0.0.1:8080")?

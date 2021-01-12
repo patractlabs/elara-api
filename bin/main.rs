@@ -1,6 +1,5 @@
 use clap::{App, Arg};
 use log::{info, warn};
-
 use rdkafka::client::ClientContext;
 use rdkafka::config::{ClientConfig, RDKafkaLogLevel};
 use rdkafka::consumer::stream_consumer::StreamConsumer;
@@ -10,13 +9,10 @@ use rdkafka::message::{Headers, Message};
 use rdkafka::topic_partition_list::TopicPartitionList;
 use rdkafka::util::get_rdkafka_version;
 
-use crate::example_utils::setup_logger;
+use elara_api::websocket;
+use example_utils::setup_logger;
 
-mod config;
-mod example_utils;
-mod kafka;
-mod message;
-mod websocket;
+pub mod example_utils;
 
 struct CustomContext;
 
@@ -86,6 +82,9 @@ async fn consume_and_print(brokers: &str, group_id: &str, topics: &[&str]) {
 
 #[actix_web::main]
 async fn main() {
+    println!("actix");
+    websocket::create_ws_server().await;
+
     let matches = App::new("consumer example")
         .version(option_env!("CARGO_PKG_VERSION").unwrap_or(""))
         .about("Simple command line consumer")
@@ -130,8 +129,7 @@ async fn main() {
     let topics = matches.values_of("topics").unwrap().collect::<Vec<&str>>();
     let brokers = matches.value_of("brokers").unwrap();
     let group_id = matches.value_of("group-id").unwrap();
-    println!("actix");
-    websocket::create_ws_server();
+
     println!("kafka");
     consume_and_print(brokers, group_id, &topics).await;
 }
