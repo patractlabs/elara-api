@@ -131,7 +131,7 @@ async fn main() {
     let brokers = matches.value_of("brokers").unwrap();
     let group_id = matches.value_of("group-id").unwrap();
     println!("actix");
-    websocket::main();
+    websocket::create_ws_server();
     println!("kafka");
     consume_and_print(brokers, group_id, &topics).await;
 }

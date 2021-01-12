@@ -28,3 +28,7 @@ rustls = "0.19"
 actix-tls = "3.0.0-beta.2"
 actix = "0.11.0-beta.1"
 jsonrpc-core = "16.0"
+
+[[bin]]
+name = "elara-api"
+path = "bin/main.rs"
