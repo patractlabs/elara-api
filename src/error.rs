@@ -1,5 +1,3 @@
-use actix_web_actors::ws::ProtocolError;
-use anyhow::{Context, Result};
 use rdkafka::error::KafkaError;
 use thiserror::Error;
 
@@ -12,5 +10,5 @@ pub enum ServiceError {
     JsonrpcError(#[from] jsonrpc_core::Error),
 
     #[error(transparent)]
-    WsError(#[from] ProtocolError),
+    JsonError(#[from] serde_json::Error),
 }

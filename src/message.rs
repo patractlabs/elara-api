@@ -1,14 +1,12 @@
-use jsonrpc_core::response::{Failure, Success};
-pub use jsonrpc_core::{Error, MethodCall, Output, Params, Version};
+pub use jsonrpc_core::{Error, Failure, MethodCall, Output, Params, Success, Value, Version};
 use serde::{Deserialize, Serialize};
-use serde_json::{Map, Result, Value};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct RequestMessage {
     pub id: String,
     pub chain: String,
-    /// A subset of jsonrpc2 about request
-    pub request: MethodCall,
+    /// A jsonrpc string about request
+    pub request: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -16,20 +14,16 @@ pub struct ResponseMessage {
     pub id: String,
     pub chain: String,
     // TODO: check the format
-    /// A subset of jsonrpc2 about response
-    pub result: Output,
+    /// A jsonrpc string about result
+    pub result: String,
 }
 
-pub type ResponseSuccessMessage = Success;
-pub type ResponseFailureMessage = Failure;
-
-/// SubscribedMessage is a subset of jsonrpc2 about subscription data
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct SubscribedMessage {
     pub id: String,
     pub chain: String,
-    /// A subset of jsonrpc2 about subscription
-    pub data: SubscribedData,
+    /// A jsonrpc string about subscription
+    pub data: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -47,6 +41,7 @@ pub struct SubscribedParams {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::Result;
 
     #[test]
     fn test_request_message() -> Result<()> {
@@ -64,7 +59,8 @@ mod tests {
 }
 "#;
 
-        let v: RequestMessage = serde_json::from_str(request_data)?;
+        let _v: RequestMessage = serde_json::from_str(request_data)?;
+
         Ok(())
     }
 
@@ -82,7 +78,7 @@ mod tests {
     }
 "#;
 
-        let v: ResponseMessage = serde_json::from_str(data)?;
+        let _v: ResponseMessage = serde_json::from_str(data)?;
 
         Ok(())
     }
@@ -115,7 +111,7 @@ mod tests {
 }
 "#;
 
-        let v: SubscribedMessage = serde_json::from_str(data)?;
+        let _v: SubscribedMessage = serde_json::from_str(data)?;
 
         Ok(())
     }

@@ -1,17 +1,21 @@
 use rdkafka::config::ClientConfig;
 use rdkafka::consumer::stream_consumer::StreamConsumer;
-use rdkafka::consumer::stream_consumer::StreamConsumerContext;
-use rdkafka::consumer::{CommitMode, ConsumerContext, Rebalance};
+
+use rdkafka::consumer::{ConsumerContext, Rebalance};
 use rdkafka::topic_partition_list::TopicPartitionList;
 use rdkafka::ClientContext;
-use std::collections::{HashMap, HashSet};
 
-use log::{info, warn};
+use log::info;
 use rdkafka::util::DefaultRuntime;
 
+
+use futures::{Stream, TryStreamExt};
 pub use rdkafka::config::RDKafkaLogLevel as LogLevel;
 pub use rdkafka::consumer::Consumer;
+pub use rdkafka::error::KafkaError;
 pub use rdkafka::error::KafkaResult;
+pub use rdkafka::message::BorrowedMessage;
+use rdkafka::message::OwnedMessage;
 
 struct KVContext;
 
@@ -47,6 +51,12 @@ impl From<KvConsumer> for StreamConsumer<KVContext> {
     }
 }
 
+// trait KafkaMessageStream: Stream<Item=KafkaResult<OwnedMessage>> + {
+//
+// }
+
+// pub type KafkaMessageStream<'a> = MessageStream<'a, KVContext>;
+
 impl KvConsumer {
     pub fn new<T>(config: T, level: LogLevel) -> Self
     where
@@ -71,5 +81,16 @@ impl KvConsumer {
 
     pub fn subscribe(&self, topics: &[&str]) -> KafkaResult<()> {
         self.0.subscribe(topics)
+    }
+
+    pub fn stream(&self) -> impl Stream<Item = KafkaResult<OwnedMessage>> + '_ {
+        self.0.stream().map_ok(|borrowed_message| {
+            let owned_message = borrowed_message.detach();
+            owned_message
+        })
+    }
+
+    pub async fn recv(&self) -> Result<OwnedMessage, KafkaError> {
+        self.0.recv().await.map(|msg| msg.detach())
     }
 }
