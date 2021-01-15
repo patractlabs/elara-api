@@ -9,7 +9,8 @@ use rdkafka::message::{Headers, Message};
 use rdkafka::topic_partition_list::TopicPartitionList;
 use rdkafka::util::get_rdkafka_version;
 
-// use elara_api::websocket;
+use elara_api::websocket2;
+
 use example_utils::setup_logger;
 
 pub mod example_utils;
@@ -80,14 +81,21 @@ async fn consume_and_print(brokers: &str, group_id: &str, topics: &[&str]) {
     }
 }
 
+use tokio::sync::mpsc;
+
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
+    env_logger::init();
     // The server spawns a separate thread. Dropping the `server` handle causes it to close.
     // Uncomment the line below to keep the server running in your example.
     // server.wait();
 
     println!("actix");
     // websocket::create_ws_server().await?;
+    let addr = "127.0.0.1:9002";
+
+    let (sender, receiver) = mpsc::channel(100);
+    websocket2::WsServer::new(receiver).bind(addr).await;
 
     let matches = App::new("consumer example")
         .version(option_env!("CARGO_PKG_VERSION").unwrap_or(""))

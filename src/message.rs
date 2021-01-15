@@ -38,6 +38,37 @@ pub struct SubscribedParams {
     pub result: Vec<Value>,
 }
 
+pub type KafkaStoragePayload = Vec<KafkaStoragePayloadItem>;
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct KafkaStoragePayloadItem {
+    pub id: u64,
+    pub block_num: u64,
+    pub hash: String,
+    pub is_full: bool,
+    pub key: String,
+    pub storage: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct StateStorageResult {
+    pub block: String,
+    pub changes: Vec<(String, Option<String>)>,
+}
+
+impl From<KafkaStoragePayload> for StateStorageResult {
+    fn from(payload: KafkaStoragePayload) -> Self {
+        Self {
+            // assume payload at least have one
+            block: payload[0].hash.clone(),
+            changes: payload.into_iter().map(|item| {
+                (item.key, item.storage)
+            }).collect(),
+        }
+    }
+}
+
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -50,16 +81,12 @@ mod tests {
 {
     "id": "b6c6d0aa16b0f5eb65e6fd87c6ffbba2",
     "chain": "polkadot",
-    "request": {
-        "id": 141,
-        "jsonrpc": "2.0",
-        "method": "state_subscribeStorage",
-        "params": [ ["0x2aeddc77fe58c98d50bd37f1b90840f9cd7f37317cd20b61e9bd46fab87047149c21b6ab44c00eb3127a30e486492921e58f2564b36ab1ca21ff630672f0e76920edd601f8f2b89a"]]
-    }
+    "request": "{\n\"id\": 141,\n\"jsonrpc\": \"2.0\",\n\"method\": \"state_subscribeStorage\",\n\"params\": [ [\"0x2aeddc77fe58c98d50bd37f1b90840f9cd7f37317cd20b61e9bd46fab87047149c21b6ab44c00eb3127a30e486492921e58f2564b36ab1ca21ff630672f0e76920edd601f8f2b89a\"]]}"
 }
 "#;
 
-        let _v: RequestMessage = serde_json::from_str(request_data)?;
+        let v: RequestMessage = serde_json::from_str(request_data)?;
+        let v: MethodCall = serde_json::from_str(&*v.request)?;
 
         Ok(())
     }
@@ -67,18 +94,15 @@ mod tests {
     #[test]
     fn test_response_message() -> Result<()> {
         let data = r#"
-    {
-      "id": "b6c6d0aa16b0f5eb65e6fd87c6ffbba2",
-      "chain": "polkadot",
-      "result": {
-        "jsonrpc": "2.0",
-        "result": "0x91b171bb158e2d3848fa23a9f1c25182fb8e20313b2c1eb49219da7a70ce90c3",
-        "id": 1
-      }
-    }
+{
+    "id": "b6c6d0aa16b0f5eb65e6fd87c6ffbba2",
+    "chain": "polkadot",
+    "result": "{\n\"jsonrpc\": \"2.0\",\n\"result\": \"0x91b171bb158e2d3848fa23a9f1c25182fb8e20313b2c1eb49219da7a70ce90c3\",\"id\": 1}"
+}
 "#;
 
-        let _v: ResponseMessage = serde_json::from_str(data)?;
+        let v: ResponseMessage = serde_json::from_str(data)?;
+        let v: Success = serde_json::from_str(&*v.result)?;
 
         Ok(())
     }
@@ -87,31 +111,14 @@ mod tests {
     fn test_subscribed_message() -> Result<()> {
         let data = r#"
 {
-  "id": "b6c6d0aa16b0f5eb65e6fd87c6ffbba2",
-  "chain": "polkadot",
-  "data": {
-    "jsonrpc": "2.0",
-    "params": {
-      "subscription": "ffMpMJgyQt3rmHx8",
-      "result": [{
-        "block": "0x04b67ec2b6ff34ebd58ed95fe9aad1068f805d2519ca8a24b986994b6764f410",
-        "number": 10086,
-        "is_full": true,
-        "changes": [
-          ["0x2aeddc77fe58c98d50bd37f1b90840f9cd7f37317cd20b61e9bd46fab870471456c62bce26605ee05c3c4c795e554a782e59ef5043ca9772f32dfb1ad7de832878d662194193955e",
-            null
-          ],
-          ["0x2aeddc77fe58c98d50bd37f1b90840f943a953ac082e08b6527ce262dbd4abf2e7731c5a045ae2174d185feff2d91e9a5c3c4c795e554a782e59ef5043ca9772f32dfb1ad7de832878d662194193955e",
-            "0x3a875e45c13575f66eadb2d60608df9068a90e46ed33723098021e8cedd67d3a09f09f90ad20584949"
-          ]
-        ]
-      }]
-    }
-  }
+    "id": "b6c6d0aa16b0f5eb65e6fd87c6ffbba2",
+    "chain": "polkadot",
+    "data": "{\"jsonrpc\": \"2.0\",\n\"params\": {\n\"subscription\": \"ffMpMJgyQt3rmHx8\",\n\t\t\"result\": [{\n\t\t  \"block\": \"0x04b67ec2b6ff34ebd58ed95fe9aad1068f805d2519ca8a24b986994b6764f410\",\n\t\t  \"number\": 10086,\n\t\t  \"is_full\": true,\n\t\t  \"changes\": [\n    [\"0x2aeddc77fe58c98d50bd37f1b90840f9cd7f37317cd20b61e9bd46fab870471456c62bce26605ee05c3c4c795e554a782e59ef5043ca9772f32dfb1ad7de832878d662194193955e\",              null ],[\"0x2aeddc77fe58c98d50bd37f1b90840f943a953ac082e08b6527ce262dbd4abf2e7731c5a045ae2174d185feff2d91e9a5c3c4c795e554a782e59ef5043ca9772f32dfb1ad7de832878d662194193955e\", \"0x3a875e45c13575f66eadb2d60608df9068a90e46ed33723098021e8cedd67d3a09f09f90ad20584949\"]]}]}}"
 }
 "#;
 
-        let _v: SubscribedMessage = serde_json::from_str(data)?;
+        let v: SubscribedMessage = serde_json::from_str(data)?;
+        let v: SubscribedData = serde_json::from_str(&*v.data)?;
 
         Ok(())
     }

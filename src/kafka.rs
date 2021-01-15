@@ -8,7 +8,6 @@ use rdkafka::ClientContext;
 use log::info;
 use rdkafka::util::DefaultRuntime;
 
-
 use futures::{Stream, TryStreamExt};
 pub use rdkafka::config::RDKafkaLogLevel as LogLevel;
 pub use rdkafka::consumer::Consumer;
