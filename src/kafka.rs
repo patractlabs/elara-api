@@ -15,6 +15,10 @@ pub use rdkafka::error::KafkaError;
 pub use rdkafka::error::KafkaResult;
 pub use rdkafka::message::BorrowedMessage;
 use rdkafka::message::OwnedMessage;
+use std::sync::Arc;
+use tokio::sync::broadcast;
+use tokio::sync::broadcast::channel;
+use tokio::sync::broadcast::{Receiver, Sender};
 
 struct KVContext;
 
@@ -37,18 +41,6 @@ impl ConsumerContext for KVContext {
 
 /// KvConsumer is shared with all ws connections
 pub struct KvConsumer(StreamConsumer<KVContext>);
-
-impl From<StreamConsumer<KVContext>> for KvConsumer {
-    fn from(consumer: StreamConsumer<KVContext, DefaultRuntime>) -> Self {
-        Self(consumer)
-    }
-}
-
-impl From<KvConsumer> for StreamConsumer<KVContext> {
-    fn from(consumer: KvConsumer) -> Self {
-        consumer.0
-    }
-}
 
 // trait KafkaMessageStream: Stream<Item=KafkaResult<OwnedMessage>> + {
 //
@@ -75,7 +67,7 @@ impl KvConsumer {
             .create_with_context(context)
             .expect("Consumer creation failed");
 
-        consumer.into()
+        Self(consumer)
     }
 
     pub fn subscribe(&self, topics: &[&str]) -> KafkaResult<()> {
@@ -83,13 +75,46 @@ impl KvConsumer {
     }
 
     pub fn stream(&self) -> impl Stream<Item = KafkaResult<OwnedMessage>> + '_ {
-        self.0.stream().map_ok(|borrowed_message| {
-            let owned_message = borrowed_message.detach();
-            owned_message
-        })
+        self.0
+            .stream()
+            .map_ok(|borrowed_message| borrowed_message.detach())
     }
 
     pub async fn recv(&self) -> Result<OwnedMessage, KafkaError> {
         self.0.recv().await.map(|msg| msg.detach())
+    }
+}
+
+pub struct KVSubscriber {
+    // TODO: support consumers
+    consumer: KvConsumer,
+    sender: Sender<OwnedMessage>,
+}
+
+impl KVSubscriber {
+    pub fn new(consumer: KvConsumer, chan_size: usize) -> Self {
+        let (sender, receiver) = broadcast::channel(chan_size);
+        Self { consumer, sender }
+    }
+
+    /// start to subscribe kafka data.
+    pub async fn start(&self) {
+        loop {
+            let msg = self.consumer.recv().await;
+            match msg {
+                Ok(msg) => {
+                    self.sender.send(msg);
+                }
+                Err(err) => {
+                    log::error!("{}", err);
+                }
+            };
+        }
+    }
+
+    /// Creates a new [`Receiver`] handle that will receive values sent **after**
+    /// this call to `subscribe`.
+    pub fn subscribe(&mut self) -> Receiver<OwnedMessage> {
+        self.sender.subscribe()
     }
 }

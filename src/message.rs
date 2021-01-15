@@ -1,5 +1,7 @@
-pub use jsonrpc_core::{Error, Failure, MethodCall, Output, Params, Success, Value, Version};
+use crate::rpc_api::SubscribedResult;
 use serde::{Deserialize, Serialize};
+
+pub use jsonrpc_core::{Error, Failure, MethodCall, Output, Params, Success, Value, Version};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct RequestMessage {
@@ -35,39 +37,8 @@ pub struct SubscribedData {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct SubscribedParams {
     pub subscription: String,
-    pub result: Vec<Value>,
+    pub result: SubscribedResult,
 }
-
-pub type KafkaStoragePayload = Vec<KafkaStoragePayloadItem>;
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct KafkaStoragePayloadItem {
-    pub id: u64,
-    pub block_num: u64,
-    pub hash: String,
-    pub is_full: bool,
-    pub key: String,
-    pub storage: Option<String>,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct StateStorageResult {
-    pub block: String,
-    pub changes: Vec<(String, Option<String>)>,
-}
-
-impl From<KafkaStoragePayload> for StateStorageResult {
-    fn from(payload: KafkaStoragePayload) -> Self {
-        Self {
-            // assume payload at least have one
-            block: payload[0].hash.clone(),
-            changes: payload.into_iter().map(|item| {
-                (item.key, item.storage)
-            }).collect(),
-        }
-    }
-}
-
 
 #[cfg(test)]
 mod tests {
