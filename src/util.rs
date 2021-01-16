@@ -1,14 +1,12 @@
 use crate::error::ServiceError;
 use crate::message::{MethodCall, Output, ResponseMessage, Value, Version};
-use crate::session::{Session, StorageKeys, SubscriptionSession};
+use crate::session::{ArcSessions, Session, StorageKeys, SubscriptionSession};
 use std::collections::HashSet;
-use std::sync::Arc;
-use tokio::sync::RwLock;
 
 #[allow(non_snake_case)]
 pub(crate) async fn handle_state_subscribeStorage(
-    session: Arc<RwLock<SubscriptionSession>>,
-    key: Session,
+    sessions: ArcSessions,
+    session: Session,
     request: MethodCall,
 ) -> Result<ResponseMessage, ServiceError> {
     let params: Vec<Vec<String>> = request.params.parse()?;
@@ -37,19 +35,18 @@ pub(crate) async fn handle_state_subscribeStorage(
         }
     };
 
-    session.write().await.0.insert(key.clone(), storage_keys);
-
+   let mut sessions =  sessions.write().await;
+    sessions.insert(session.clone(), storage_keys);
     let result = serde_json::to_string(&Output::from(
         // state_subscribeStorage's result is subscription id
-        // TODO: make sure the subscription id
-        Ok(Value::String(key.client_id.clone())),
+        Ok(Value::String(sessions.subscription_id(&session).unwrap())),
         request.id,
         Some(Version::V2),
     ))?;
 
     Ok(ResponseMessage {
-        id: key.client_id,
-        chain: key.chain_name,
+        id: session.client_id,
+        chain: session.chain_name,
         result,
     })
 }

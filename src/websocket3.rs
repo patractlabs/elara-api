@@ -1,24 +1,25 @@
 use crate::error::{Result, ServiceError};
 use crate::kafka_api::KafkaStoragePayload;
 use crate::message::{
-    MethodCall, RequestMessage, ResponseMessage, SubscribedData, SubscribedParams, Version,
+    MethodCall, RequestMessage, ResponseMessage, SubscribedData, SubscribedMessage,
+    SubscribedParams, Version,
 };
 use crate::rpc_api::SubscribedResult;
-use crate::session::{Session, StorageKeys, SubscriptionSession};
+use crate::session::{ArcSessions, Session, StorageKeys, SubscriptionSession};
 use crate::util;
-use futures::{sink::SinkExt, StreamExt};
+use futures::sink::SinkExt;
 use log::*;
 use rdkafka::message::OwnedMessage;
 use rdkafka::Message as KafkaMessage;
 
 use crate::rpc_api::state::*;
+use std::net::SocketAddr;
 use std::sync::Arc;
-use std::{net::SocketAddr, time::Duration};
 use tokio::net::{TcpListener, TcpStream, ToSocketAddrs};
 use tokio::sync::broadcast::Sender;
 use tokio::sync::RwLock;
 use tokio_tungstenite::{accept_async, tungstenite, WebSocketStream};
-use tungstenite::{Error, Message};
+use tungstenite::Message;
 
 /// A wrapper for WebSocketStream
 #[derive(Debug)]
@@ -27,10 +28,10 @@ pub struct WsServer {
 }
 
 /// WsConnection maintains state. When WsServer accept a new connection, a WsConnection will be returned.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct WsConnection {
     pub addr: SocketAddr,
-    pub session: Arc<RwLock<SubscriptionSession>>,
+    pub sessions: ArcSessions,
 }
 
 impl WsServer {
@@ -49,7 +50,7 @@ impl WsServer {
             stream,
             WsConnection {
                 addr,
-                session: Arc::new(RwLock::new(Default::default())),
+                sessions: Arc::new(RwLock::new(Default::default())),
             },
         ))
     }
@@ -63,7 +64,8 @@ impl WsConnection {
                 match msg {
                     Ok(msg) => {
                         // handle jsonrpc error
-                        let res = handle_request(self.session.clone(), msg).await?;
+                        let res = handle_request(self.sessions.clone(), msg).await?;
+
                         Ok(Message::Text(serde_json::to_string(&res)?))
                     }
                     // handle json api error
@@ -75,66 +77,71 @@ impl WsConnection {
     }
 }
 
-async fn handle_request(
-    session: Arc<RwLock<SubscriptionSession>>,
-    msg: RequestMessage,
-) -> Result<ResponseMessage> {
-    let key: Session = Session::from(&msg);
+async fn handle_request(sessions: ArcSessions, msg: RequestMessage) -> Result<ResponseMessage> {
+    let session: Session = Session::from(&msg);
     // TODO: check jsonrpc error rather than json error
     let request: MethodCall =
         serde_json::from_str(&*msg.request).map_err(ServiceError::JsonError)?;
 
     // TODO: use hashmap rather than if-else
     if request.method == *"state_subscribeStorage" {
-        util::handle_state_subscribeStorage(session, key, request).await
+        util::handle_state_subscribeStorage(sessions, session, request).await
     } else {
-        return Err(ServiceError::JsonrpcError(
+        Err(ServiceError::JsonrpcError(
             jsonrpc_core::Error::method_not_found(),
-        ));
+        ))
     }
 }
 
-async fn handle_kafka_message(
-    session: Arc<RwLock<SubscriptionSession>>,
-    msg: Option<OwnedMessage>,
-    subscription_message: &mut Sender<SubscribedData>,
-) -> Result<()> {
-    match msg {
-        // TODO:
-        // kafka consumer closed
-        None => Ok(()),
-        Some(msg) => {
-            info!("{:?}", msg);
-            // TODO: handle different topic and key for message
-            if msg.payload().is_none() {
-                return Ok(());
-            }
-            let payload = msg.payload().unwrap();
-            let payload: KafkaStoragePayload =
-                serde_json::from_slice(payload).map_err(ServiceError::JsonError)?;
-
-            let result: SubscribedResult = StateStorageResult::from(payload).into();
-
-            let session = session.read().await;
-            for (key, storage) in session.0.iter() {
-                match storage {
-                    // send the subscription data to this subscription unconditionally
-                    StorageKeys::All => {
-                        subscription_message.send(SubscribedData {
-                            jsonrpc: Some(Version::V2),
-                            params: SubscribedParams {
-                                // TODO:
-                                subscription: key.client_id.clone(),
-                                result: result.clone(),
-                            },
-                        });
-                    }
-                    // TODO: do filter
-                    _ => {}
-                };
-            }
-
-            Ok(())
+// transfer a kafka message to a group of SubscribedMessage according to session
+pub async fn handle_kafka_message(
+    session: ArcSessions,
+    msg: OwnedMessage,
+) -> Result<Vec<SubscribedMessage>> {
+    // TODO: handle different topic and key for message
+    // ignore msg which does not have a payload
+    let payload = match msg.payload() {
+        None => {
+            warn!("Receive a kafka message whose payload is none: {:?}", msg);
+            return Ok(vec![]);
         }
+        Some(payload) => payload,
+    };
+    let payload: KafkaStoragePayload =
+        serde_json::from_slice(payload).map_err(ServiceError::JsonError)?;
+
+    let result: SubscribedResult = StateStorageResult::from(payload).into();
+
+    let session = session.read().await;
+
+    let mut msgs = vec![];
+    for (key, (id, storage)) in session.iter() {
+        let msg = match storage {
+            // send the subscription data to this subscription unconditionally
+            StorageKeys::All => {
+                let data = SubscribedData {
+                    jsonrpc: Some(Version::V2),
+                    params: SubscribedParams {
+                        // TODO: make sure the subscription could be client_id.
+                        subscription: id.clone(),
+                        result: result.clone(),
+                    },
+                };
+
+                let data = serde_json::to_string(&data)?;
+
+                SubscribedMessage {
+                    id: key.client_id.clone(),
+                    chain: key.chain_name.clone(),
+                    data,
+                }
+            }
+            // TODO: do filter for keys
+            _ => unimplemented!(),
+        };
+
+        msgs.push(msg);
     }
+
+    Ok(msgs)
 }

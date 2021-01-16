@@ -1,12 +1,10 @@
 use std::time::Duration;
 
-use clap::{App, Arg};
 use log::info;
 
 use rdkafka::config::ClientConfig;
 use rdkafka::message::OwnedHeaders;
 use rdkafka::producer::{FutureProducer, FutureRecord};
-use rdkafka::util::get_rdkafka_version;
 
 async fn produce(brokers: &str, topic_name: &str) {
     let producer: &FutureProducer = &ClientConfig::new()

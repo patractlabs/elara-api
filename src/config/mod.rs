@@ -5,26 +5,26 @@ use std::fs::File;
 use std::io;
 use std::io::prelude::*;
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct Config {
     pub log: LogConfig,
     pub kafka: HashMap<String, String>,
+    pub ws: WsConfig,
 }
 
-#[derive(Deserialize, Debug)]
-pub struct ServerConfig {
-    pub name: String,
-    pub url: String,
+#[derive(Deserialize, Debug, Clone)]
+pub struct WsConfig {
+    pub addr: String,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct ChainConfig {
     pub name: String,
     pub rpc_url: String,
     pub ws_url: String,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct LogConfig {
     pub level: String,
 }

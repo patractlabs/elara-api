@@ -12,7 +12,7 @@ use rdkafka::ClientContext;
 
 use futures::{Stream, TryStreamExt};
 use log::info;
-use std::rc::Rc;
+
 use std::sync::Arc;
 use tokio::sync::broadcast;
 use tokio::sync::broadcast::{Receiver, Sender};

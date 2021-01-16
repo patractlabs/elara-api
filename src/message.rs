@@ -2,6 +2,7 @@ use crate::rpc_api::SubscribedResult;
 use serde::{Deserialize, Serialize};
 
 pub use jsonrpc_core::{Error, Failure, MethodCall, Output, Params, Success, Value, Version};
+use crate::error::ServiceError;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct RequestMessage {
@@ -18,6 +19,20 @@ pub struct ResponseMessage {
     // TODO: check the format
     /// A jsonrpc string about result
     pub result: String,
+}
+
+/// When request is illegal, the message will be returned.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ResponseErrorMessage {
+    pub error: String,
+}
+
+impl From<ServiceError> for ResponseErrorMessage {
+    fn from(err: ServiceError) -> Self {
+        Self {
+            error: err.to_string(),
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
