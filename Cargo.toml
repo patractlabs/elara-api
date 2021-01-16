@@ -19,7 +19,7 @@ chrono = { version = "0.4", features = ["serde"] }
 crossbeam-channel = "0.5"
 log = "0.4"
 simplelog = "0.8"
-env_logger = "0.7"
+env_logger = "0.8"
 
 # TODO:
 actix-web = { version = "4.0.0-beta.1", features = ["rustls"] }
@@ -39,3 +39,7 @@ tokio-tungstenite = "0.13.0"
 [[bin]]
 name = "elara-api"
 path = "bin/main.rs"
+
+[[bin]]
+name = "producer"
+path = "bin/producer.rs"

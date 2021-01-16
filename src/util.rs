@@ -38,7 +38,6 @@ pub(crate) async fn handle_state_subscribeStorage(
     };
 
     session.write().await.0.insert(key.clone(), storage_keys);
-    // TODO: response the request
 
     let result = serde_json::to_string(&Output::from(
         // state_subscribeStorage's result is subscription id

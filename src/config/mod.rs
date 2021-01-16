@@ -1,24 +1,14 @@
 use serde::Deserialize;
 
+use std::collections::HashMap;
 use std::fs::File;
+use std::io;
 use std::io::prelude::*;
 
 #[derive(Deserialize, Debug)]
 pub struct Config {
     pub log: LogConfig,
-    pub kafka: KafkaConfig,
-    pub stat: ServerConfig,
-    pub ws: ServerConfig,
-    pub chains: Vec<ChainConfig>,
-}
-
-#[derive(Deserialize, Debug)]
-pub struct KafkaConfig {
-    pub url: String,
-    pub topic: String,
-    pub mode: String,
-    pub username: String,
-    pub password: String,
+    pub kafka: HashMap<String, String>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -39,12 +29,9 @@ pub struct LogConfig {
     pub level: String,
 }
 
-pub fn load_config(path: &str) -> Config {
-    let mut file = File::open(path).expect("open file fail");
-    let mut str_val = String::new();
-    file.read_to_string(&mut str_val)
-        .expect("Error Reading config file");
-
-    let config: Config = toml::from_str(&str_val).unwrap();
-    config
+pub fn load_config(path: &str) -> io::Result<String> {
+    let mut file = File::open(path)?;
+    let mut res = String::new();
+    let _ = file.read_to_string(&mut res)?;
+    Ok(res)
 }

@@ -10,24 +10,27 @@ use futures::{sink::SinkExt, StreamExt};
 use log::*;
 use rdkafka::message::OwnedMessage;
 use rdkafka::Message as KafkaMessage;
-use std::io::Split;
+
+use crate::rpc_api::state::*;
 use std::sync::Arc;
 use std::{net::SocketAddr, time::Duration};
 use tokio::net::{TcpListener, TcpStream, ToSocketAddrs};
+use tokio::sync::broadcast::Sender;
 use tokio::sync::RwLock;
 use tokio_tungstenite::{accept_async, tungstenite, WebSocketStream};
 use tungstenite::{Error, Message};
 
+/// A wrapper for WebSocketStream
 #[derive(Debug)]
 pub struct WsServer {
     listener: TcpListener,
 }
 
+/// WsConnection maintains state. When WsServer accept a new connection, a WsConnection will be returned.
 #[derive(Debug)]
 pub struct WsConnection {
-    pub stream: WebSocketStream<TcpStream>,
     pub addr: SocketAddr,
-    pub session: SubscriptionSession,
+    pub session: Arc<RwLock<SubscriptionSession>>,
 }
 
 impl WsServer {
@@ -37,15 +40,38 @@ impl WsServer {
         Ok(Self { listener })
     }
 
-    pub async fn accept(&self) -> std::io::Result<WsConnection> {
+    /// returns a WebSocketStream and corresponding connection as a state
+    pub async fn accept(&self) -> std::io::Result<(WebSocketStream<TcpStream>, WsConnection)> {
         let (stream, addr) = self.listener.accept().await?;
         let stream = accept_async(stream).await.expect("Failed to accept");
 
-        Ok(WsConnection {
+        Ok((
             stream,
-            addr,
-            session: Default::default(),
-        })
+            WsConnection {
+                addr,
+                session: Arc::new(RwLock::new(Default::default())),
+            },
+        ))
+    }
+}
+
+impl WsConnection {
+    pub async fn handle_message(&self, msg: Message) -> Result<Message> {
+        match msg {
+            Message::Text(text) => {
+                let msg = serde_json::from_str(&*text).map_err(ServiceError::JsonError);
+                match msg {
+                    Ok(msg) => {
+                        // handle jsonrpc error
+                        let res = handle_request(self.session.clone(), msg).await?;
+                        Ok(Message::Text(serde_json::to_string(&res)?))
+                    }
+                    // handle json api error
+                    Err(err) => Err(err),
+                }
+            }
+            _ => unimplemented!(),
+        }
     }
 }
 
@@ -68,32 +94,8 @@ async fn handle_request(
     }
 }
 
-async fn handle_message(
-    session: Arc<RwLock<SubscriptionSession>>,
-    msg: Message,
-) -> Result<Message> {
-    match msg {
-        Message::Text(text) => {
-            let msg = serde_json::from_str(&*text).map_err(ServiceError::JsonError);
-            match msg {
-                Ok(msg) => {
-                    // handle jsonrpc error
-                    let res = handle_request(session, msg).await?;
-                    Ok(Message::Text(serde_json::to_string(&res)?))
-                }
-                // handle json api error
-                Err(err) => Err(err),
-            }
-        }
-        _ => unimplemented!(),
-    }
-}
-
-use crate::rpc_api::state::*;
-use tokio::sync::broadcast::Sender;
-
 async fn handle_kafka_message(
-    route: Arc<RwLock<SubscriptionSession>>,
+    session: Arc<RwLock<SubscriptionSession>>,
     msg: Option<OwnedMessage>,
     subscription_message: &mut Sender<SubscribedData>,
 ) -> Result<()> {
@@ -113,8 +115,8 @@ async fn handle_kafka_message(
 
             let result: SubscribedResult = StateStorageResult::from(payload).into();
 
-            let route = route.read().await;
-            for (key, storage) in route.0.iter() {
+            let session = session.read().await;
+            for (key, storage) in session.0.iter() {
                 match storage {
                     // send the subscription data to this subscription unconditionally
                     StorageKeys::All => {
@@ -134,48 +136,5 @@ async fn handle_kafka_message(
 
             Ok(())
         }
-    }
-}
-
-impl WsConnection {
-    async fn accept_connection(self) {
-        if let Err(e) = self.handle_connection().await {
-            match e {
-                Error::ConnectionClosed | Error::Protocol(_) | Error::Utf8 => (),
-                err => error!("Error processing connection: {}", err),
-            }
-        }
-    }
-
-    async fn handle_connection(self) -> tungstenite::Result<()> {
-        info!("New WebSocket connection: {}", self.addr);
-        let (mut ws_sender, mut ws_receiver) = self.stream.split();
-        let mut interval = tokio::time::interval(Duration::from_millis(1000));
-
-        // Echo incoming WebSocket messages and send a message periodically every second.
-        loop {
-            tokio::select! {
-                msg = ws_receiver.next() => {
-                    match msg {
-                        Some(msg) => {
-                            let msg = msg?;
-                            if msg.is_text() ||msg.is_binary() {
-                                ws_sender.send(msg).await?;
-                            } else if msg.is_close() {
-                                break;
-                            }
-                        }
-                        None => break,
-                    }
-                }
-                _ = interval.tick() => {
-                    ws_sender.send(Message::Text("tick".to_owned())).await?;
-                }
-            }
-        }
-
-        ws_sender.close().await?;
-
-        Ok(())
     }
 }

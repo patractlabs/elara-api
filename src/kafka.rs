@@ -1,23 +1,20 @@
 use rdkafka::config::ClientConfig;
-use rdkafka::consumer::stream_consumer::StreamConsumer;
-
-use rdkafka::consumer::{ConsumerContext, Rebalance};
-use rdkafka::topic_partition_list::TopicPartitionList;
-use rdkafka::ClientContext;
-
-use log::info;
-use rdkafka::util::DefaultRuntime;
-
-use futures::{Stream, TryStreamExt};
 pub use rdkafka::config::RDKafkaLogLevel as LogLevel;
+use rdkafka::consumer::stream_consumer::StreamConsumer;
 pub use rdkafka::consumer::Consumer;
+use rdkafka::consumer::{ConsumerContext, Rebalance};
 pub use rdkafka::error::KafkaError;
 pub use rdkafka::error::KafkaResult;
 pub use rdkafka::message::BorrowedMessage;
-use rdkafka::message::OwnedMessage;
+pub use rdkafka::message::OwnedMessage;
+use rdkafka::topic_partition_list::TopicPartitionList;
+use rdkafka::ClientContext;
+
+use futures::{Stream, TryStreamExt};
+use log::info;
+use std::rc::Rc;
 use std::sync::Arc;
 use tokio::sync::broadcast;
-use tokio::sync::broadcast::channel;
 use tokio::sync::broadcast::{Receiver, Sender};
 
 struct KVContext;
@@ -41,12 +38,6 @@ impl ConsumerContext for KVContext {
 
 /// KvConsumer is shared with all ws connections
 pub struct KvConsumer(StreamConsumer<KVContext>);
-
-// trait KafkaMessageStream: Stream<Item=KafkaResult<OwnedMessage>> + {
-//
-// }
-
-// pub type KafkaMessageStream<'a> = MessageStream<'a, KVContext>;
 
 impl KvConsumer {
     pub fn new<T>(config: T, level: LogLevel) -> Self
@@ -87,34 +78,41 @@ impl KvConsumer {
 
 pub struct KVSubscriber {
     // TODO: support consumers
-    consumer: KvConsumer,
+    consumer: Arc<KvConsumer>,
     sender: Sender<OwnedMessage>,
 }
 
 impl KVSubscriber {
-    pub fn new(consumer: KvConsumer, chan_size: usize) -> Self {
-        let (sender, receiver) = broadcast::channel(chan_size);
-        Self { consumer, sender }
+    /// wrap a kafka consumer to dispatch consumer data to multiple receivers
+    pub fn new(consumer: Arc<KvConsumer>, chan_size: usize) -> Self {
+        let (sender, _receiver) = broadcast::channel(chan_size);
+        Self { sender, consumer }
     }
 
     /// start to subscribe kafka data.
-    pub async fn start(&self) {
-        loop {
-            let msg = self.consumer.recv().await;
-            match msg {
-                Ok(msg) => {
-                    self.sender.send(msg);
-                }
-                Err(err) => {
-                    log::error!("{}", err);
-                }
-            };
-        }
+    pub fn start(&self) {
+        let consumer = self.consumer.clone();
+        let sender = self.sender.clone();
+        tokio::spawn(async move {
+            log::debug!("started background subscription");
+            loop {
+                let msg = consumer.recv().await;
+                log::debug!("{:#?}", &msg);
+                match msg {
+                    Ok(msg) => {
+                        sender.send(msg);
+                    }
+                    Err(err) => {
+                        log::error!("{}", err);
+                    }
+                };
+            }
+        });
     }
 
     /// Creates a new [`Receiver`] handle that will receive values sent **after**
     /// this call to `subscribe`.
-    pub fn subscribe(&mut self) -> Receiver<OwnedMessage> {
+    pub fn subscribe(&self) -> Receiver<OwnedMessage> {
         self.sender.subscribe()
     }
 }

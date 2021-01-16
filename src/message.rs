@@ -57,7 +57,7 @@ mod tests {
 "#;
 
         let v: RequestMessage = serde_json::from_str(request_data)?;
-        let v: MethodCall = serde_json::from_str(&*v.request)?;
+        let _v: MethodCall = serde_json::from_str(&*v.request)?;
 
         Ok(())
     }
@@ -73,7 +73,7 @@ mod tests {
 "#;
 
         let v: ResponseMessage = serde_json::from_str(data)?;
-        let v: Success = serde_json::from_str(&*v.result)?;
+        let _v: Success = serde_json::from_str(&*v.result)?;
 
         Ok(())
     }
@@ -89,7 +89,7 @@ mod tests {
 "#;
 
         let v: SubscribedMessage = serde_json::from_str(data)?;
-        let v: SubscribedData = serde_json::from_str(&*v.data)?;
+        let _v: SubscribedData = serde_json::from_str(&*v.data)?;
 
         Ok(())
     }
