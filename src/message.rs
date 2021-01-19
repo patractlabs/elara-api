@@ -1,8 +1,8 @@
 use crate::rpc_api::SubscribedResult;
 use serde::{Deserialize, Serialize};
 
-pub use jsonrpc_core::{Error, Failure, MethodCall, Output, Params, Success, Value, Version};
 use crate::error::ServiceError;
+pub use jsonrpc_core::{Error, Failure, MethodCall, Output, Params, Success, Value, Version};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct RequestMessage {
@@ -12,11 +12,10 @@ pub struct RequestMessage {
     pub request: String,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq)]
 pub struct ResponseMessage {
     pub id: String,
     pub chain: String,
-    // TODO: check the format
     /// A jsonrpc string about result
     pub result: String,
 }
@@ -51,9 +50,65 @@ pub struct SubscribedData {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct SubscribedParams {
-    pub subscription: String,
+    pub subscription: SubscriptionId,
     pub result: SubscribedResult,
 }
+
+// Note: Altered from jsonrpc_pubsub::SubscriptionId
+
+/// Unique subscription id.
+///
+/// NOTE Assigning same id to different requests will cause the previous request to be unsubscribed.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+#[serde(untagged)]
+pub enum SubscriptionId {
+    /// A numerical ID, represented by a `u64`.
+    Number(u64),
+    /// A non-numerical ID, for example a hash.
+    String(String),
+}
+
+impl SubscriptionId {
+    /// Parses `core::Value` into unique subscription id.
+    pub fn parse_value(val: &Value) -> Option<SubscriptionId> {
+        match *val {
+            Value::String(ref val) => Some(SubscriptionId::String(val.clone())),
+            Value::Number(ref val) => val.as_u64().map(SubscriptionId::Number),
+            _ => None,
+        }
+    }
+}
+
+impl From<String> for SubscriptionId {
+    fn from(other: String) -> Self {
+        SubscriptionId::String(other)
+    }
+}
+
+impl From<SubscriptionId> for Value {
+    fn from(sub: SubscriptionId) -> Self {
+        match sub {
+            SubscriptionId::Number(val) => Value::Number(val.into()),
+            SubscriptionId::String(val) => Value::String(val),
+        }
+    }
+}
+
+macro_rules! impl_from_num {
+    ($num:ty) => {
+        impl From<$num> for SubscriptionId {
+            fn from(other: $num) -> Self {
+                SubscriptionId::Number(other.into())
+            }
+        }
+    };
+}
+
+impl_from_num!(u8);
+impl_from_num!(u16);
+impl_from_num!(u32);
+impl_from_num!(u64);
 
 #[cfg(test)]
 mod tests {

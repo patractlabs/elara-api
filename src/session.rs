@@ -1,42 +1,57 @@
-use crate::message::RequestMessage;
+use crate::message::{RequestMessage, SubscriptionId};
 use std::collections::hash_map::Iter;
 use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
-use tokio::sync::RwLock;
 
-// TODO: support other session type for other subscription type
-// map (chain_name ++ client_id) -> (keys set)
+pub use jsonrpc_pubsub::manager::{IdProvider, NumericIdProvider, RandomStringIdProvider};
 
 /// Sessions maintains the ws sessions for different subscriptions for one connection
 #[derive(Default, Debug, Clone)]
-pub struct Sessions(HashMap<Session, (SubscriptionId, StorageKeys<HashSet<String>>)>);
+pub struct Sessions<S: Default, I: IdProvider = RandomStringIdProvider> {
+    id_provider: I,
+    map: HashMap<SubscriptionId, S>,
+}
 
-/// SubscriptionId is generated according to Session uniquely.
-pub type SubscriptionId = String;
+pub type StorageSessions = Sessions<(Session, StorageKeys<HashSet<String>>)>;
+// TODO: support other session type for other subscription type
 
-pub type ArcSessions = Arc<RwLock<Sessions>>;
 
-impl Sessions {
+impl<S: Default> Sessions<S> {
+
     pub fn new() -> Self {
-        Default::default()
+        Self::default()
     }
 
-    pub fn insert(&mut self, session: Session, keys: StorageKeys<HashSet<String>>) {
-        // TODO: make sure the map for id
-        let id = session.client_id.clone() + &*session.chain_name;
-        self.0.insert(session, (id, keys));
+    /// Returns the next ID for the subscription.
+    pub fn new_subscription_id(&self) -> SubscriptionId {
+        let id = self.id_provider.next_id();
+        id.into()
     }
 
-    pub fn remove(&mut self, session: &Session) {
-        self.0.remove(session);
+    /// Return a SubscriptionId for this storage.
+    pub fn insert(&mut self, id: SubscriptionId, s: S) -> Option<S> {
+        self.map.insert(id, s)
     }
 
-    pub fn subscription_id(&self, session: &Session) -> Option<SubscriptionId> {
-        self.0.get(session).map(|(id, _)| id.to_string())
+    /// Removes a session from the sessions, returning the value at the session if the session
+    /// was previously in the map.
+    pub fn remove(&mut self, id: &SubscriptionId) -> Option<S> {
+        self.map.remove(id)
     }
 
-    pub fn iter(&self) -> Iter<'_, Session, (SubscriptionId, StorageKeys<HashSet<String>>)> {
-        self.0.iter()
+    /// An iterator visiting all key-value pairs in arbitrary order.
+    pub fn iter(&self) -> Iter<'_, SubscriptionId, S> {
+        self.map.iter()
+    }
+}
+
+impl<S: Default, I: IdProvider> Sessions<S, I> {
+    /// Creates a new SubscriptionManager with the specified
+    /// ID provider.
+    pub fn with_id_provider(id_provider: I) -> Self {
+        Self {
+            id_provider,
+            map: Default::default(),
+        }
     }
 }
 
@@ -48,8 +63,14 @@ pub enum StorageKeys<T> {
     Some(T),
 }
 
+impl<T> Default for StorageKeys<T> {
+    fn default() -> Self {
+        Self::All
+    }
+}
+
 /// Session as a subscription session
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Default)]
 pub struct Session {
     pub chain_name: String,
     pub client_id: String,

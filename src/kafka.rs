@@ -88,24 +88,29 @@ impl KVSubscriber {
     /// wrap a kafka consumer to dispatch consumer data to multiple receivers
     pub fn new(consumer: Arc<KvConsumer>, chan_size: usize) -> Self {
         let (sender, _receiver) = broadcast::channel(chan_size);
-        Self { sender, consumer, _receiver }
+        Self {
+            sender,
+            consumer,
+            _receiver,
+        }
     }
 
     /// start to subscribe kafka data.
     pub fn start(&self) {
+        log::debug!("Started background kafka subscription");
         let consumer = self.consumer.clone();
         let sender = self.sender.clone();
         tokio::spawn(async move {
-            log::debug!("started background subscription");
             loop {
                 let msg = consumer.recv().await;
-                log::debug!("{:#?}", &msg);
+                log::debug!("{:?}", &msg);
                 match msg {
                     Ok(msg) => {
-                       if let Err(err) = sender.send(msg) {
-                           log::warn!("error when send kafka data: {}", err);
-                       }
+                        if let Err(err) = sender.send(msg) {
+                            log::warn!("error when send kafka data: {}", err);
+                        }
                     }
+
                     Err(err) => {
                         log::error!("kafka error: {}", err);
                     }

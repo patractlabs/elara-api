@@ -1,9 +1,9 @@
 pub mod config;
 pub mod error;
 pub mod kafka;
-pub mod message;
-pub mod session;
-pub mod websocket;
 pub mod kafka_api;
+pub mod message;
 pub mod rpc_api;
+pub mod session;
 pub mod util;
+pub mod websocket;

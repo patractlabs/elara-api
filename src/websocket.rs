@@ -5,18 +5,17 @@ use crate::message::{
     SubscribedParams, Version,
 };
 use crate::rpc_api::SubscribedResult;
-use crate::session::{ArcSessions, Session, StorageKeys};
+use crate::session::{Session, StorageKeys, StorageSessions};
 use crate::util;
-use futures::sink::SinkExt;
 use log::*;
 use rdkafka::message::OwnedMessage;
 use rdkafka::Message as KafkaMessage;
 
 use crate::rpc_api::state::*;
 use std::net::SocketAddr;
+use std::ops::DerefMut;
 use std::sync::Arc;
 use tokio::net::{TcpListener, TcpStream, ToSocketAddrs};
-use tokio::sync::broadcast::Sender;
 use tokio::sync::RwLock;
 use tokio_tungstenite::{accept_async, tungstenite, WebSocketStream};
 use tungstenite::Message;
@@ -31,7 +30,8 @@ pub struct WsServer {
 #[derive(Debug, Clone)]
 pub struct WsConnection {
     pub addr: SocketAddr,
-    pub sessions: ArcSessions,
+    // TODO: add other session type
+    pub storage_sessions: Arc<RwLock<StorageSessions>>,
 }
 
 impl WsServer {
@@ -50,7 +50,7 @@ impl WsServer {
             stream,
             WsConnection {
                 addr,
-                sessions: Arc::new(RwLock::new(Default::default())),
+                storage_sessions: Arc::new(RwLock::new(StorageSessions::new())),
             },
         ))
     }
@@ -64,38 +64,50 @@ impl WsConnection {
                 match msg {
                     Ok(msg) => {
                         // handle jsonrpc error
-                        let res = handle_request(self.sessions.clone(), msg).await?;
-
-                        Ok(Message::Text(serde_json::to_string(&res)?))
+                        let res = self.handle_request(msg).await?;
+                        // TODO: handle serde_json error;
+                        Ok(Message::Text(
+                            serde_json::to_string(&res).expect("ResponseMessage won't be error"),
+                        ))
                     }
                     // handle json api error
                     Err(err) => Err(err),
                 }
             }
-            _ => unimplemented!(),
+
+            Message::Binary(bytes) => {
+                unimplemented!()
+            }
+            // TODO:
+            _ => unreachable!(),
         }
     }
-}
 
-async fn handle_request(sessions: ArcSessions, msg: RequestMessage) -> Result<ResponseMessage> {
-    let session: Session = Session::from(&msg);
-    // TODO: check jsonrpc error rather than json error
-    let request: MethodCall =
-        serde_json::from_str(&*msg.request).map_err(ServiceError::JsonError)?;
+    async fn handle_request(&self, msg: RequestMessage) -> Result<ResponseMessage> {
+        let session: Session = Session::from(&msg);
+        // TODO: check jsonrpc error rather than json error
+        let request: MethodCall =
+            serde_json::from_str(&*msg.request).map_err(ServiceError::JsonError)?;
 
-    // TODO: use hashmap rather than if-else
-    if request.method == *"state_subscribeStorage" {
-        util::handle_state_subscribeStorage(sessions, session, request).await
-    } else {
-        Err(ServiceError::JsonrpcError(
-            jsonrpc_core::Error::method_not_found(),
-        ))
+        let storage_sessions = self.storage_sessions.clone();
+        let mut storage_sessions = storage_sessions.write().await;
+
+        // TODO: use hashmap rather than if-else
+        if request.method == *"state_subscribeStorage" {
+            util::handle_state_subscribeStorage(storage_sessions.deref_mut(), session, request)
+        } else if request.method == *"state_unsubscribeStorage" {
+            util::handle_state_unsubscribeStorage(storage_sessions.deref_mut(), session, request)
+        } else {
+            Err(ServiceError::JsonrpcError(
+                jsonrpc_core::Error::method_not_found(),
+            ))
+        }
     }
 }
 
 // transfer a kafka message to a group of SubscribedMessage according to session
 pub async fn handle_kafka_message(
-    session: ArcSessions,
+    sessions: &Arc<RwLock<StorageSessions>>,
     msg: OwnedMessage,
 ) -> Result<Vec<SubscribedMessage>> {
     // TODO: handle different topic and key for message
@@ -112,10 +124,10 @@ pub async fn handle_kafka_message(
 
     let result: SubscribedResult = StateStorageResult::from(payload).into();
 
-    let session = session.read().await;
+    let sessions = sessions.read().await;
 
     let mut msgs = vec![];
-    for (key, (id, storage)) in session.iter() {
+    for (key, (id, storage)) in sessions.iter() {
         let msg = match storage {
             // send the subscription data to this subscription unconditionally
             StorageKeys::All => {
@@ -123,16 +135,16 @@ pub async fn handle_kafka_message(
                     jsonrpc: Some(Version::V2),
                     params: SubscribedParams {
                         // TODO: make sure the subscription could be client_id.
-                        subscription: id.clone(),
                         result: result.clone(),
+                        subscription: key.clone(),
                     },
                 };
 
                 let data = serde_json::to_string(&data)?;
 
                 SubscribedMessage {
-                    id: key.client_id.clone(),
-                    chain: key.chain_name.clone(),
+                    id: id.client_id.clone(),
+                    chain: id.chain_name.clone(),
                     data,
                 }
             }
