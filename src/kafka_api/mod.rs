@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 pub type KafkaStoragePayload = Vec<KafkaStoragePayloadItem>;
 
-// TODO: make sure kafka api
+// TODO: make sure kafka api from archive side
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct KafkaStoragePayloadItem {
     pub id: u64,

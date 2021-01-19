@@ -2,7 +2,7 @@
 level = "debug"
 
 [kafka]
-"group.id" = "test"
+"group.id" = "elara-api"
 "bootstrap.servers" = "localhost:9092"
 "enable.partition.eof" = "false"
 "session.timeout.ms" = "6000"

@@ -7,13 +7,6 @@ use tokio::sync::RwLock;
 // TODO: support other session type for other subscription type
 // map (chain_name ++ client_id) -> (keys set)
 
-// TODO: remove
-/// SubscriptionSession maintains the ws sessions for different subscriptions for one connection
-#[derive(Debug, Default)]
-pub struct SubscriptionSession(pub HashMap<Session, StorageKeys<HashSet<String>>>);
-// TODO: remove
-pub type ArcSubscriptionSession = Arc<RwLock<SubscriptionSession>>;
-
 /// Sessions maintains the ws sessions for different subscriptions for one connection
 #[derive(Default, Debug, Clone)]
 pub struct Sessions(HashMap<Session, (SubscriptionId, StorageKeys<HashSet<String>>)>);

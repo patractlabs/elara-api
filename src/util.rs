@@ -1,6 +1,6 @@
 use crate::error::ServiceError;
 use crate::message::{MethodCall, Output, ResponseMessage, Value, Version};
-use crate::session::{ArcSessions, Session, StorageKeys, SubscriptionSession};
+use crate::session::{ArcSessions, Session, StorageKeys};
 use std::collections::HashSet;
 
 #[allow(non_snake_case)]

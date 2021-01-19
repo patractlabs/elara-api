@@ -18,13 +18,6 @@ pub struct WsConfig {
 }
 
 #[derive(Deserialize, Debug, Clone)]
-pub struct ChainConfig {
-    pub name: String,
-    pub rpc_url: String,
-    pub ws_url: String,
-}
-
-#[derive(Deserialize, Debug, Clone)]
 pub struct LogConfig {
     pub level: String,
 }

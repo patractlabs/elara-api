@@ -1,7 +1,7 @@
 use log::*;
 
 use elara_api::kafka::{KVSubscriber, KvConsumer, LogLevel, OwnedMessage};
-use elara_api::websocket3::{handle_kafka_message, WsConnection, WsServer};
+use elara_api::websocket::{handle_kafka_message, WsConnection, WsServer};
 use futures::{Sink, SinkExt, Stream, StreamExt};
 use std::sync::Arc;
 use tokio::net::{ TcpStream};
@@ -12,14 +12,15 @@ use tungstenite::{Error, Message};
 
 use elara_api::config::*;
 use elara_api::error::Result;
-use futures::lock::Mutex;
+use tokio::sync::Mutex;
 use futures::stream::{SplitSink, SplitStream};
 use elara_api::message::ResponseErrorMessage;
 
-#[actix_web::main]
+#[tokio::main]
 async fn main() -> Result<()> {
     env_logger::init();
 
+    // TODO; refine config
     let path = "bin/config.toml";
     info!("Load config from: {}", path);
     let cfg = load_config(path).expect("Illegal config path");

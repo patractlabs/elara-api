@@ -76,17 +76,19 @@ impl KvConsumer {
     }
 }
 
+/// Dispatch one consumer's data to different receivers.
 pub struct KVSubscriber {
     // TODO: support consumers
     consumer: Arc<KvConsumer>,
     sender: Sender<OwnedMessage>,
+    _receiver: Receiver<OwnedMessage>,
 }
 
 impl KVSubscriber {
     /// wrap a kafka consumer to dispatch consumer data to multiple receivers
     pub fn new(consumer: Arc<KvConsumer>, chan_size: usize) -> Self {
         let (sender, _receiver) = broadcast::channel(chan_size);
-        Self { sender, consumer }
+        Self { sender, consumer, _receiver }
     }
 
     /// start to subscribe kafka data.
@@ -100,10 +102,12 @@ impl KVSubscriber {
                 log::debug!("{:#?}", &msg);
                 match msg {
                     Ok(msg) => {
-                        sender.send(msg);
+                       if let Err(err) = sender.send(msg) {
+                           log::warn!("error when send kafka data: {}", err);
+                       }
                     }
                     Err(err) => {
-                        log::error!("{}", err);
+                        log::error!("kafka error: {}", err);
                     }
                 };
             }
