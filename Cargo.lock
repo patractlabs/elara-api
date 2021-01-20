@@ -113,7 +113,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "elara-api"
+name = "elara-kv-component"
 version = "0.1.0"
 dependencies = [
  "env_logger",

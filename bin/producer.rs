@@ -46,7 +46,7 @@ async fn main() {
     env_logger::init();
 
     let brokers = "localhost:9092";
-    let topic = "polkadot";
+    let topic = "kusama";
 
     produce(brokers, topic).await;
 }

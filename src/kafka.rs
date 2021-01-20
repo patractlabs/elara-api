@@ -36,7 +36,6 @@ impl ConsumerContext for KVContext {
     }
 }
 
-/// KvConsumer is shared with all ws connections
 pub struct KvConsumer(StreamConsumer<KVContext>);
 
 impl KvConsumer {
@@ -80,7 +79,7 @@ impl KvConsumer {
     }
 }
 
-/// Dispatch one consumer's data to different receivers.
+/// Dispatch kafka consumer's data to different receivers.
 pub struct KVSubscriber {
     // TODO: support consumers
     consumer: Arc<KvConsumer>,

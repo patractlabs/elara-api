@@ -9,9 +9,7 @@ level = "debug"
 "enable.auto.commit" = "true"
 
 [kafka]
-
-topics = ["polkadot"]
-
+topics = ["polkadot", "kusama"]
 
 [ws]
 addr = "localhost:9002"

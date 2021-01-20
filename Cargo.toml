@@ -1,8 +1,13 @@
 [package]
-name = "elara-api"
+name = "elara-kv-component"
 version = "0.1.0"
-authors = ["cyh"]
+authors = ["yjhmelody <yjh465402634@gmail.com>"]
 edition = "2018"
+
+description = "Elara KV component for subscribing substrate node data"
+keywords = ["kafka", "substrate", "websocket", "jsonrpc", "polkadot", "kusama"]
+categories = ["web", "blockchain"]
+readme = "README.md"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -31,7 +36,7 @@ tokio-tungstenite = "0.13"
 #actix = "0.11.0-beta.1"
 
 [[bin]]
-name = "elara-api"
+name = "elara-kv"
 path = "bin/main.rs"
 
 # Just for debug, remove them laterly.

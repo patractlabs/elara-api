@@ -1,18 +1,16 @@
-use log::*;
+use elara_kv_component::config::*;
+use elara_kv_component::error::Result;
+use elara_kv_component::kafka::{KVSubscriber, KvConsumer, LogLevel, OwnedMessage};
+use elara_kv_component::message::ResponseErrorMessage;
+use elara_kv_component::websocket::{collect_subscribed_storage, WsConnection, WsServer};
 
-use elara_api::kafka::{KVSubscriber, KvConsumer, LogLevel, OwnedMessage};
-use elara_api::websocket::{collect_subscribed_storage, WsConnection, WsServer};
 use futures::{SinkExt, StreamExt};
+use log::*;
+use rdkafka::Message as KafkaMessage;
 use std::sync::Arc;
 use tokio::sync::broadcast::Receiver;
-
 use tokio_tungstenite::tungstenite;
 use tungstenite::{Error, Message};
-
-use elara_api::config::*;
-use elara_api::error::Result;
-use elara_api::message::ResponseErrorMessage;
-use rdkafka::Message as KafkaMessage;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -92,7 +90,7 @@ async fn start_subscription_push(
 
                 // TODO:
                 Some(other) => {
-                    warn!("Receive a message with key: {:?}", other);
+                    warn!("Receive a message with key: `{}`", String::from_utf8(other.to_vec()).expect(""));
                 }
 
                 None => {
