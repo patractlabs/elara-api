@@ -14,6 +14,7 @@ use elara_api::config::*;
 use elara_api::error::Result;
 use elara_api::message::ResponseErrorMessage;
 use futures::stream::{SplitSink, SplitStream};
+use rdkafka::Message as KafkaMessage;
 use tokio::sync::Mutex;
 
 #[tokio::main]
@@ -54,8 +55,6 @@ async fn main() -> Result<()> {
             }
         };
     }
-
-    unreachable!();
 }
 
 // fn handle_ws_error(err: tungstenite::Result<()>) {
@@ -75,7 +74,6 @@ fn handle_connection(
     info!("New WebSocket connection: {}", connection.addr);
     let (sender, receiver) = stream.split();
     let sender = Arc::new(Mutex::new(sender));
-
     tokio::spawn(handle_request(connection, sender, receiver, subscriber));
 }
 
@@ -90,35 +88,77 @@ async fn start_pushing_service(
         "Started to subscribe kafka data for peer: {}",
         connection.addr
     );
+    // TODO: handle different topic and key
     while let Ok(msg) = kafka_receiver.recv().await {
-        let storage_sessions = connection.storage_sessions.clone();
-        let storage_sessions = storage_sessions.read().await;
-        let res = handle_kafka_message(&storage_sessions, msg).await;
-        match res {
-            Err(ref err) => {
-                warn!(
-                    "Error occurred when collect data according to subscription params: {:?}",
-                    err
-                );
-            }
+        if Arc::strong_count(&ws_sender) <= 1 {
+            break;
+        }
 
-            Ok(msgs) => {
-                let mut sender = ws_sender.lock().await;
-                for msg in msgs.iter() {
-                    let msg = serde_json::to_string(msg).expect("serialize subscription data");
-                    let res = sender.feed(Message::Text(msg)).await;
-                    // TODO: refine it. We need to exit if connection is closed
-                    if let Err(Error::ConnectionClosed) = res {
-                        return;
-                    }
+        debug!("Receive a message: {:?}", &msg);
+
+        if msg.payload().is_none() {
+            warn!("Receive a kafka message whose payload is empty: {:?}", msg);
+            continue;
+        }
+
+        match msg.topic() {
+            // TODO: extract them as a trait
+            "polkadot" | "kusama" => match msg.key() {
+                Some(b"storage") => {
+                    handle_kafka_storage(&connection, &ws_sender, msg).await;
                 }
-                let res = sender.flush().await;
-                if let Err(Error::ConnectionClosed) = res {
-                    return;
+
+                // TODO:
+                Some(other) => {
+                    warn!("Receive a message with key: {:?}", other);
                 }
+
+                None => {
+                    warn!("Receive a message without a key: {:?}", msg);
+                }
+            },
+            // TODO:
+            other => {
+                warn!("Receive a message with topic: {:?}", other);
             }
         }
     }
+
+    debug!("start_pushing_service return");
+}
+
+// TODO: refine these handles
+async fn handle_kafka_storage(
+    connection: &WsConnection,
+    ws_sender: &Arc<Mutex<SplitSink<WebSocketStream<TcpStream>, Message>>>,
+    msg: OwnedMessage,
+) {
+    let storage_sessions = connection.storage_sessions.clone();
+    let storage_sessions = storage_sessions.read().await;
+    let res = handle_kafka_message(&storage_sessions, msg);
+    let msgs = match res {
+        Err(ref err) => {
+            warn!(
+                "Error occurred when collect data according to subscription params: {:?}",
+                err
+            );
+            return;
+        }
+
+        Ok(msgs) => msgs,
+    };
+
+    let mut sender = ws_sender.lock().await;
+    for msg in msgs.iter() {
+        let msg = serde_json::to_string(msg).expect("serialize subscription data");
+        let res = sender.feed(Message::Text(msg)).await;
+        // TODO: refine it. We need to exit if connection is closed
+        if let Err(Error::ConnectionClosed) = res {
+            return
+        }
+    }
+    // TODO: need to handle ?
+    let _res = sender.flush().await;
 }
 
 async fn handle_request(
@@ -148,12 +188,13 @@ async fn handle_request(
                                     subscriber.subscribe(),
                                 ));
                             };
-                        }
+                        },
+
                         Err(err) => {
                             let err =
                                 serde_json::to_string(&ResponseErrorMessage::from(err)).unwrap();
                             // TODO: need we to handle this?
-                            sender.send(Message::Text(err)).await;
+                            let _res = sender.send(Message::Text(err)).await;
                         }
                     };
                 }

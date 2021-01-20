@@ -7,7 +7,6 @@ use crate::message::{
 use crate::rpc_api::SubscribedResult;
 use crate::session::{Session, StorageKeys, StorageSessions};
 use crate::util;
-use log::*;
 use rdkafka::message::OwnedMessage;
 use rdkafka::Message as KafkaMessage;
 
@@ -29,6 +28,7 @@ pub struct WsServer {
 /// WsConnection maintains state. When WsServer accept a new connection, a WsConnection will be returned.
 #[derive(Debug, Clone)]
 pub struct WsConnection {
+    // TODO: define WebSocketStream here
     pub addr: SocketAddr,
     // TODO: add other session type
     pub storage_sessions: Arc<RwLock<StorageSessions>>,
@@ -81,7 +81,7 @@ impl WsConnection {
                         // TODO: handle serde_json error;
                         Ok(Message::Text(
                             serde_json::to_string(&response)
-                                .expect("ResponseMessage won't be error"),
+                                .expect("serialize response for elara"),
                         ))
                     }
                     // handle json api error
@@ -89,6 +89,7 @@ impl WsConnection {
                 }
             }
 
+            // TODO:
             Message::Binary(_bytes) => {
                 unimplemented!()
             }
@@ -129,25 +130,21 @@ impl WsConnection {
     }
 }
 
-// transfer a kafka message to a group of SubscribedMessage according to session
-pub async fn handle_kafka_message(
+// transfer a kafka message to a group of SubscribedMessage according to storage session
+pub fn handle_kafka_message(
     sessions: &StorageSessions,
     msg: OwnedMessage,
 ) -> Result<Vec<SubscribedMessage>> {
-    // TODO: handle different topic and key for message
     // ignore msg which does not have a payload
     let payload = match msg.payload() {
-        None => {
-            warn!("Receive a kafka message whose payload is none: {:?}", msg);
-            return Ok(vec![]);
-        }
         Some(payload) => payload,
+        _ => unreachable!(),
     };
     let payload: KafkaStoragePayload =
         serde_json::from_slice(payload).map_err(ServiceError::JsonError)?;
 
     // result for subscribing all storages
-    let result: SubscribedResult = StateStorageResult::from(payload).into();
+    let result: SubscribedResult = StateStorageResult::from(&payload).into();
 
     let mut msgs = vec![];
     for (subscription_id, (session, storage)) in sessions.iter() {
@@ -156,6 +153,8 @@ pub async fn handle_kafka_message(
             StorageKeys::All => {
                 let data = SubscribedData {
                     jsonrpc: Some(Version::V2),
+                    // TODO:
+                    method: "".to_string(),
                     params: SubscribedParams {
                         // TODO: make sure the subscription could be client_id.
                         result: result.clone(),
@@ -165,16 +164,10 @@ pub async fn handle_kafka_message(
 
                 serde_json::to_string(&data).expect("serialize a subscribed data")
             }
+
             // TODO: do filter for keys
             StorageKeys::Some(_keys) => {
-                // let data = SubscribedData {
-                //     jsonrpc: Some(Version::V2),
-                //     params: SubscribedParams {
-                //         subscription: subscription_id.clone(),
-                //         result,
-                //     }
-                // }
-                unimplemented!()
+                unimplemented!();
             }
         };
 

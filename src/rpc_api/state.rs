@@ -15,14 +15,14 @@ impl From<StateStorageResult> for SubscribedResult {
     }
 }
 
-impl From<KafkaStoragePayload> for StateStorageResult {
-    fn from(payload: KafkaStoragePayload) -> Self {
+impl From<&KafkaStoragePayload> for StateStorageResult {
+    fn from(payload: &KafkaStoragePayload) -> Self {
         Self {
             // assume payload at least have one
             block: payload[0].hash.clone(),
             changes: payload
-                .into_iter()
-                .map(|item| (item.key, item.storage))
+                .iter()
+                .map(|item| (item.key.clone(), item.storage.clone()))
                 .collect(),
         }
     }

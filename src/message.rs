@@ -45,6 +45,7 @@ pub struct SubscribedMessage {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct SubscribedData {
     pub jsonrpc: Option<Version>,
+    pub method: String,
     pub params: SubscribedParams,
 }
 
@@ -150,15 +151,16 @@ mod tests {
 
     #[test]
     fn test_subscribed_message() -> Result<()> {
-        let data = r#"
+        let msg = r#"
 {
     "id": "b6c6d0aa16b0f5eb65e6fd87c6ffbba2",
     "chain": "polkadot",
-    "data": "{\"jsonrpc\": \"2.0\",\n\"params\": {\n\"subscription\": \"ffMpMJgyQt3rmHx8\",\n\t\t\"result\": [{\n\t\t  \"block\": \"0x04b67ec2b6ff34ebd58ed95fe9aad1068f805d2519ca8a24b986994b6764f410\",\n\t\t  \"number\": 10086,\n\t\t  \"is_full\": true,\n\t\t  \"changes\": [\n    [\"0x2aeddc77fe58c98d50bd37f1b90840f9cd7f37317cd20b61e9bd46fab870471456c62bce26605ee05c3c4c795e554a782e59ef5043ca9772f32dfb1ad7de832878d662194193955e\",              null ],[\"0x2aeddc77fe58c98d50bd37f1b90840f943a953ac082e08b6527ce262dbd4abf2e7731c5a045ae2174d185feff2d91e9a5c3c4c795e554a782e59ef5043ca9772f32dfb1ad7de832878d662194193955e\", \"0x3a875e45c13575f66eadb2d60608df9068a90e46ed33723098021e8cedd67d3a09f09f90ad20584949\"]]}]}}"
+    "data": "{\"jsonrpc\": \"2.0\",\n\"method\":\"state_storage\", \n\"params\": {\n\"subscription\": \"ffMpMJgyQt3rmHx8\",\n\t\t\"result\": {\n\t\t  \"block\": \"0x04b67ec2b6ff34ebd58ed95fe9aad1068f805d2519ca8a24b986994b6764f410\",\n\t\t  \"changes\": [\n    [\"0x2aeddc77fe58c98d50bd37f1b90840f9cd7f37317cd20b61e9bd46fab870471456c62bce26605ee05c3c4c795e554a782e59ef5043ca9772f32dfb1ad7de832878d662194193955e\",              null ],[\"0x2aeddc77fe58c98d50bd37f1b90840f943a953ac082e08b6527ce262dbd4abf2e7731c5a045ae2174d185feff2d91e9a5c3c4c795e554a782e59ef5043ca9772f32dfb1ad7de832878d662194193955e\", \"0x3a875e45c13575f66eadb2d60608df9068a90e46ed33723098021e8cedd67d3a09f09f90ad20584949\"]]}}}"
 }
 "#;
 
-        let v: SubscribedMessage = serde_json::from_str(data)?;
+        let v: SubscribedMessage = serde_json::from_str(msg)?;
+        dbg!(&v.data);
         let _v: SubscribedData = serde_json::from_str(&*v.data)?;
 
         Ok(())
