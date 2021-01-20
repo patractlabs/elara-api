@@ -1,36 +1,20 @@
 //! Some api handle logics
-use crate::error::ServiceError;
-use crate::message::{MethodCall, Output, ResponseMessage, Value, Version};
+use crate::message::{Error, MethodCall, Success, Value, Version};
 use crate::session::{Session, StorageKeys, StorageSessions};
 use std::collections::HashSet;
-
 
 #[allow(non_snake_case)]
 pub(crate) fn handle_state_unsubscribeStorage(
     sessions: &mut StorageSessions,
-    session: Session,
+    _session: Session,
     request: MethodCall,
-) -> Result<ResponseMessage, ServiceError> {
-    let params: (String,) = request.params.parse()?;
-    // remove the session
-    let subscribed = if let Some(_) = sessions.remove(&params.0.into()) {
-        true
-    } else {
-        // we don't find the subscription id
-        false
-    };
-
-    let result = serde_json::to_string(&Output::from(
-        // state_subscribeStorage's result is subscription id
-        Ok(Value::Bool(subscribed)),
-        request.id,
-        Some(Version::V2),
-    ))?;
-
-    Ok(ResponseMessage {
-        id: session.client_id,
-        chain: session.chain_name,
-        result,
+) -> Result<Success, Error> {
+    let params = request.params.parse::<(String,)>()?;
+    let subscribed = sessions.remove(&params.0.into()).is_some();
+    Ok(Success {
+        jsonrpc: Some(Version::V2),
+        result: Value::Bool(subscribed),
+        id: request.id,
     })
 }
 
@@ -39,14 +23,12 @@ pub(crate) fn handle_state_subscribeStorage(
     sessions: &mut StorageSessions,
     session: Session,
     request: MethodCall,
-) -> Result<ResponseMessage, ServiceError> {
+) -> Result<Success, Error> {
     let params: Vec<Vec<String>> = request.params.parse()?;
     // TODO: make sure the api semantics
     let storage_keys = match params {
         arr if arr.len() > 1 => {
-            return Err(ServiceError::JsonrpcError(
-                jsonrpc_core::Error::invalid_params("some params are invalid"),
-            ));
+            return Err(Error::invalid_params("more than one param"));
         }
         arr if arr.is_empty() || arr[0].is_empty() => StorageKeys::All,
         arrs => {
@@ -57,11 +39,9 @@ pub(crate) fn handle_state_subscribeStorage(
                 .map(|v| v.to_string())
                 .collect::<HashSet<String>>();
 
-            // TODO: keep same behavior with substrate
+            // TODO: try to keep same behavior with substrate
             if len != keys.len() {
-                return Err(ServiceError::JsonrpcError(
-                    jsonrpc_core::Error::invalid_params("some params are invalid"),
-                ));
+                return Err(Error::invalid_params("some keys are invalid"));
             }
             StorageKeys::Some(keys)
         }
@@ -69,17 +49,10 @@ pub(crate) fn handle_state_subscribeStorage(
 
     let id = sessions.new_subscription_id();
     sessions.insert(id.clone(), (session.clone(), storage_keys));
-    let result = serde_json::to_string(&Output::from(
-        // state_subscribeStorage's result is subscription id
-        Ok(id.into()),
-        request.id,
-        Some(Version::V2),
-    ))?;
-
-    Ok(ResponseMessage {
-        id: session.client_id,
-        chain: session.chain_name,
-        result,
+    Ok(Success {
+        jsonrpc: Some(Version::V2),
+        result: Value::from(id),
+        id: request.id,
     })
 }
 
@@ -113,9 +86,7 @@ mod tests {
         )
         .unwrap();
 
-        let resp = handle_state_subscribeStorage(&mut sessions, session.clone(), request).unwrap();
-
-        let result: Success = serde_json::from_str(&*resp.result).unwrap();
+        let success = handle_state_subscribeStorage(&mut sessions, session, request).unwrap();
 
         // unsubscribe
         let session = Session {
@@ -126,40 +97,31 @@ mod tests {
             jsonrpc: Some(Version::V2),
             method: "state_unsubscribeStorage".to_string(),
             params: Params::Array(vec![Value::String(
-                result.result.as_str().unwrap().to_string(),
+                success.result.as_str().unwrap().to_string(),
             )]),
             id: Id::Num(2),
         };
 
-        let resp = handle_state_unsubscribeStorage(&mut sessions, session.clone(), request.clone())
-            .unwrap();
+        let success =
+            handle_state_unsubscribeStorage(&mut sessions, session.clone(), request.clone())
+                .unwrap();
         assert_eq!(
-            resp,
-            ResponseMessage {
-                id: "0x2".to_string(),
-                chain: "test-net".to_string(),
-                result: serde_json::to_string(&Success {
-                    jsonrpc: Some(Version::V2),
-                    result: Value::Bool(true),
-                    id: Id::Num(2),
-                })
-                .unwrap(),
+            success,
+            Success {
+                jsonrpc: Some(Version::V2),
+                result: Value::Bool(true),
+                id: Id::Num(2),
             }
         );
 
         // unsubscribe again
-        let resp = handle_state_unsubscribeStorage(&mut sessions, session, request).unwrap();
+        let success = handle_state_unsubscribeStorage(&mut sessions, session, request).unwrap();
         assert_eq!(
-            resp,
-            ResponseMessage {
-                id: "0x2".to_string(),
-                chain: "test-net".to_string(),
-                result: serde_json::to_string(&Success {
-                    jsonrpc: Some(Version::V2),
-                    result: Value::Bool(false),
-                    id: Id::Num(2),
-                })
-                .unwrap(),
+            success,
+            Success {
+                jsonrpc: Some(Version::V2),
+                result: Value::Bool(false),
+                id: Id::Num(2),
             }
         );
     }

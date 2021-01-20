@@ -14,9 +14,7 @@ pub struct Sessions<S: Default, I: IdProvider = RandomStringIdProvider> {
 pub type StorageSessions = Sessions<(Session, StorageKeys<HashSet<String>>)>;
 // TODO: support other session type for other subscription type
 
-
 impl<S: Default> Sessions<S> {
-
     pub fn new() -> Self {
         Self::default()
     }
@@ -27,7 +25,7 @@ impl<S: Default> Sessions<S> {
         id.into()
     }
 
-    /// Return a SubscriptionId for this storage.
+    /// Returns a SubscriptionId for this storage.
     pub fn insert(&mut self, id: SubscriptionId, s: S) -> Option<S> {
         self.map.insert(id, s)
     }
@@ -55,8 +53,7 @@ impl<S: Default, I: IdProvider> Sessions<S, I> {
     }
 }
 
-/// All represent for all storage keys.
-/// Some contains some keys.
+/// All represent for all storage keys. Some contains some keys.
 #[derive(Clone, Debug)]
 pub enum StorageKeys<T> {
     All,

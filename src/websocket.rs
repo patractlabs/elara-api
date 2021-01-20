@@ -1,8 +1,8 @@
 use crate::error::{Result, ServiceError};
 use crate::kafka_api::KafkaStoragePayload;
 use crate::message::{
-    MethodCall, RequestMessage, ResponseMessage, SubscribedData, SubscribedMessage,
-    SubscribedParams, Version,
+    Failure, Id, MethodCall, RequestMessage, ResponseMessage, SubscribedData, SubscribedMessage,
+    SubscribedParams, Success, Version,
 };
 use crate::rpc_api::SubscribedResult;
 use crate::session::{Session, StorageKeys, StorageSessions};
@@ -42,10 +42,9 @@ impl WsServer {
     }
 
     /// returns a WebSocketStream and corresponding connection as a state
-    pub async fn accept(&self) -> std::io::Result<(WebSocketStream<TcpStream>, WsConnection)> {
+    pub async fn accept(&self) -> tungstenite::Result<(WebSocketStream<TcpStream>, WsConnection)> {
         let (stream, addr) = self.listener.accept().await?;
-        let stream = accept_async(stream).await.expect("Failed to accept");
-
+        let stream = accept_async(stream).await?;
         Ok((
             stream,
             WsConnection {
@@ -64,10 +63,25 @@ impl WsConnection {
                 match msg {
                     Ok(msg) => {
                         // handle jsonrpc error
-                        let res = self.handle_request(msg).await?;
+                        let session: Session = Session::from(&msg);
+                        let res = self.handle_request(session.clone(), msg).await;
+                        let result = match res {
+                            Ok(success) => serde_json::to_string(&success)
+                                .expect("serialize result for success response"),
+                            Err(failure) => serde_json::to_string(&failure)
+                                .expect("serialize result for failure response"),
+                        };
+
+                        let response = ResponseMessage {
+                            id: session.client_id,
+                            chain: session.chain_name,
+                            result,
+                        };
+
                         // TODO: handle serde_json error;
                         Ok(Message::Text(
-                            serde_json::to_string(&res).expect("ResponseMessage won't be error"),
+                            serde_json::to_string(&response)
+                                .expect("ResponseMessage won't be error"),
                         ))
                     }
                     // handle json api error
@@ -75,7 +89,7 @@ impl WsConnection {
                 }
             }
 
-            Message::Binary(bytes) => {
+            Message::Binary(_bytes) => {
                 unimplemented!()
             }
             // TODO:
@@ -83,31 +97,41 @@ impl WsConnection {
         }
     }
 
-    async fn handle_request(&self, msg: RequestMessage) -> Result<ResponseMessage> {
-        let session: Session = Session::from(&msg);
-        // TODO: check jsonrpc error rather than json error
-        let request: MethodCall =
-            serde_json::from_str(&*msg.request).map_err(ServiceError::JsonError)?;
+    async fn handle_request(
+        &self,
+        session: Session,
+        msg: RequestMessage,
+    ) -> std::result::Result<Success, Failure> {
+        let request = serde_json::from_str::<MethodCall>(&*msg.request).map_err(|_| Failure {
+            jsonrpc: None,
+            error: jsonrpc_core::Error::parse_error(),
+            id: Id::Null,
+        })?;
 
+        let id = request.id.clone();
         let storage_sessions = self.storage_sessions.clone();
         let mut storage_sessions = storage_sessions.write().await;
 
         // TODO: use hashmap rather than if-else
-        if request.method == *"state_subscribeStorage" {
+        let res = if request.method == *"state_subscribeStorage" {
             util::handle_state_subscribeStorage(storage_sessions.deref_mut(), session, request)
         } else if request.method == *"state_unsubscribeStorage" {
             util::handle_state_unsubscribeStorage(storage_sessions.deref_mut(), session, request)
         } else {
-            Err(ServiceError::JsonrpcError(
-                jsonrpc_core::Error::method_not_found(),
-            ))
-        }
+            Err(jsonrpc_core::Error::method_not_found())
+        };
+
+        res.map_err(|err| Failure {
+            jsonrpc: None,
+            error: err,
+            id,
+        })
     }
 }
 
 // transfer a kafka message to a group of SubscribedMessage according to session
 pub async fn handle_kafka_message(
-    sessions: &Arc<RwLock<StorageSessions>>,
+    sessions: &StorageSessions,
     msg: OwnedMessage,
 ) -> Result<Vec<SubscribedMessage>> {
     // TODO: handle different topic and key for message
@@ -122,13 +146,12 @@ pub async fn handle_kafka_message(
     let payload: KafkaStoragePayload =
         serde_json::from_slice(payload).map_err(ServiceError::JsonError)?;
 
+    // result for subscribing all storages
     let result: SubscribedResult = StateStorageResult::from(payload).into();
 
-    let sessions = sessions.read().await;
-
     let mut msgs = vec![];
-    for (key, (id, storage)) in sessions.iter() {
-        let msg = match storage {
+    for (subscription_id, (session, storage)) in sessions.iter() {
+        let data: String = match storage {
             // send the subscription data to this subscription unconditionally
             StorageKeys::All => {
                 let data = SubscribedData {
@@ -136,23 +159,30 @@ pub async fn handle_kafka_message(
                     params: SubscribedParams {
                         // TODO: make sure the subscription could be client_id.
                         result: result.clone(),
-                        subscription: key.clone(),
+                        subscription: subscription_id.clone(),
                     },
                 };
 
-                let data = serde_json::to_string(&data)?;
-
-                SubscribedMessage {
-                    id: id.client_id.clone(),
-                    chain: id.chain_name.clone(),
-                    data,
-                }
+                serde_json::to_string(&data).expect("serialize a subscribed data")
             }
             // TODO: do filter for keys
-            _ => unimplemented!(),
+            StorageKeys::Some(_keys) => {
+                // let data = SubscribedData {
+                //     jsonrpc: Some(Version::V2),
+                //     params: SubscribedParams {
+                //         subscription: subscription_id.clone(),
+                //         result,
+                //     }
+                // }
+                unimplemented!()
+            }
         };
 
-        msgs.push(msg);
+        msgs.push(SubscribedMessage {
+            id: session.client_id.clone(),
+            chain: session.chain_name.clone(),
+            data,
+        });
     }
 
     Ok(msgs)

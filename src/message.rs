@@ -2,7 +2,7 @@ use crate::rpc_api::SubscribedResult;
 use serde::{Deserialize, Serialize};
 
 use crate::error::ServiceError;
-pub use jsonrpc_core::{Error, Failure, MethodCall, Output, Params, Success, Value, Version};
+pub use jsonrpc_core::{Error, Failure, Id, MethodCall, Output, Params, Success, Value, Version};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct RequestMessage {

@@ -1,12 +1,17 @@
 [log]
 level = "debug"
 
-[kafka]
+[kafka.config]
 "group.id" = "elara-api"
 "bootstrap.servers" = "localhost:9092"
 "enable.partition.eof" = "false"
 "session.timeout.ms" = "6000"
 "enable.auto.commit" = "true"
+
+[kafka]
+
+topics = ["polkadot"]
+
 
 [ws]
 addr = "localhost:9002"

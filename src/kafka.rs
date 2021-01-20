@@ -40,6 +40,7 @@ impl ConsumerContext for KVContext {
 pub struct KvConsumer(StreamConsumer<KVContext>);
 
 impl KvConsumer {
+    /// Uses the current configuration to create a new Consumer
     pub fn new<T>(config: T, level: LogLevel) -> Self
     where
         T: Iterator<Item = (String, String)>,
@@ -61,16 +62,19 @@ impl KvConsumer {
         Self(consumer)
     }
 
+    /// Subscribes the consumer to a list of topics.
     pub fn subscribe(&self, topics: &[&str]) -> KafkaResult<()> {
         self.0.subscribe(topics)
     }
 
+    /// Constructs a stream that yields messages from this consumer.
     pub fn stream(&self) -> impl Stream<Item = KafkaResult<OwnedMessage>> + '_ {
         self.0
             .stream()
             .map_ok(|borrowed_message| borrowed_message.detach())
     }
 
+    /// Receives the next message from the stream.
     pub async fn recv(&self) -> Result<OwnedMessage, KafkaError> {
         self.0.recv().await.map(|msg| msg.detach())
     }

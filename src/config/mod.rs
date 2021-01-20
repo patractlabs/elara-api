@@ -8,13 +8,19 @@ use std::io::prelude::*;
 #[derive(Deserialize, Debug, Clone)]
 pub struct Config {
     pub log: LogConfig,
-    pub kafka: HashMap<String, String>,
+    pub kafka: KafkaConfig,
     pub ws: WsConfig,
 }
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct WsConfig {
     pub addr: String,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct KafkaConfig {
+    pub topics: Vec<String>,
+    pub config: HashMap<String, String>,
 }
 
 #[derive(Deserialize, Debug, Clone)]

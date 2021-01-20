@@ -2,10 +2,10 @@ use log::*;
 
 use elara_api::kafka::{KVSubscriber, KvConsumer, LogLevel, OwnedMessage};
 use elara_api::websocket::{handle_kafka_message, WsConnection, WsServer};
-use futures::{Sink, SinkExt, Stream, StreamExt};
+use futures::{SinkExt, StreamExt};
 use std::sync::Arc;
 use tokio::net::TcpStream;
-use tokio::sync::broadcast::{Receiver, Sender};
+use tokio::sync::broadcast::Receiver;
 
 use tokio_tungstenite::{tungstenite, WebSocketStream};
 use tungstenite::{Error, Message};
@@ -27,10 +27,11 @@ async fn main() -> Result<()> {
     let cfg: Config = toml::from_str(&*cfg).expect("Config is illegal");
 
     debug!("Load config: {:#?}", &cfg);
-    let consumer = KvConsumer::new(cfg.kafka.into_iter(), LogLevel::Debug);
+    let consumer = KvConsumer::new(cfg.kafka.config.into_iter(), LogLevel::Debug);
 
-    info!("Subscribing kafka topic `{}`", "polkadot");
-    consumer.subscribe(&["polkadot"])?;
+    let topics: Vec<&str> = cfg.kafka.topics.iter().map(|s| s.as_str()).collect();
+    info!("Subscribing kafka topic: {:?}", &topics);
+    consumer.subscribe(&*topics)?;
 
     let subscriber = Arc::new(KVSubscriber::new(Arc::new(consumer), 100));
     // start subscribing some topics
@@ -43,21 +44,28 @@ async fn main() -> Result<()> {
     info!("Started ws server at {}", addr);
 
     // accept a new connection
-    while let Ok((stream, connection)) = server.accept().await {
-        handle_connection(connection, stream, subscriber.clone());
+    loop {
+        match server.accept().await {
+            Ok((stream, connection)) => {
+                handle_connection(connection, stream, subscriber.clone());
+            }
+            Err(err) => {
+                warn!("Error occurred when accept a new connection: {}", err);
+            }
+        };
     }
 
-    Ok(())
+    unreachable!();
 }
 
-fn handle_ws_error(err: tungstenite::Result<()>) {
-    if let Err(e) = err {
-        match e {
-            Error::ConnectionClosed | Error::Protocol(_) | Error::Utf8 => (),
-            err => error!("Error processing connection: {}", err),
-        }
-    }
-}
+// fn handle_ws_error(err: tungstenite::Result<()>) {
+//     if let Err(e) = err {
+//         match e {
+//             Error::ConnectionClosed | Error::Protocol(_) | Error::Utf8 => (),
+//             err => error!("Error processing connection: {}", err),
+//         }
+//     }
+// }
 
 fn handle_connection(
     connection: WsConnection,
@@ -68,12 +76,7 @@ fn handle_connection(
     let (sender, receiver) = stream.split();
     let sender = Arc::new(Mutex::new(sender));
 
-    tokio::spawn(handle_request(
-        connection.clone(),
-        sender.clone(),
-        receiver,
-        subscriber,
-    ));
+    tokio::spawn(handle_request(connection, sender, receiver, subscriber));
 }
 
 // push subscription data for the connection
@@ -88,13 +91,9 @@ async fn start_pushing_service(
         connection.addr
     );
     while let Ok(msg) = kafka_receiver.recv().await {
-        // debug!("Receive a kafka message: {:?}", msg);
-        // {
-        //     let mut sender = ws_sender.lock().await;
-        //     sender.send(Message::from("Receive a kafka message")).await;
-        // }
-
-        let res = handle_kafka_message(&connection.storage_sessions, msg).await;
+        let storage_sessions = connection.storage_sessions.clone();
+        let storage_sessions = storage_sessions.read().await;
+        let res = handle_kafka_message(&storage_sessions, msg).await;
         match res {
             Err(ref err) => {
                 warn!(
@@ -106,7 +105,7 @@ async fn start_pushing_service(
             Ok(msgs) => {
                 let mut sender = ws_sender.lock().await;
                 for msg in msgs.iter() {
-                    let msg = serde_json::to_string(msg).expect("Won't be error");
+                    let msg = serde_json::to_string(msg).expect("serialize subscription data");
                     let res = sender.feed(Message::Text(msg)).await;
                     // TODO: refine it. We need to exit if connection is closed
                     if let Err(Error::ConnectionClosed) = res {
@@ -153,7 +152,7 @@ async fn handle_request(
                         Err(err) => {
                             let err =
                                 serde_json::to_string(&ResponseErrorMessage::from(err)).unwrap();
-                            // TODO: need we to handle this ?
+                            // TODO: need we to handle this?
                             sender.send(Message::Text(err)).await;
                         }
                     };
