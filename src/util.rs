@@ -2,7 +2,6 @@ use crate::message::{Error, MethodCall, Success, Value, Version};
 use crate::session::{Session, StorageKeys, StorageSessions};
 use std::collections::HashSet;
 
-
 // TODO: refine these as a trait
 
 #[allow(non_snake_case)]

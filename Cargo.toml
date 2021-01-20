@@ -30,7 +30,6 @@ tokio-tungstenite = "0.13"
 #actix-tls = "3.0.0-beta.2"
 #actix = "0.11.0-beta.1"
 
-
 [[bin]]
 name = "elara-api"
 path = "bin/main.rs"

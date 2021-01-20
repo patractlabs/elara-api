@@ -11,11 +11,13 @@ use rdkafka::message::OwnedMessage;
 use rdkafka::Message as KafkaMessage;
 
 use crate::rpc_api::state::*;
+use futures::stream::{SplitSink, SplitStream};
+use futures::StreamExt;
 use std::net::SocketAddr;
 use std::ops::DerefMut;
 use std::sync::Arc;
 use tokio::net::{TcpListener, TcpStream, ToSocketAddrs};
-use tokio::sync::RwLock;
+use tokio::sync::{Mutex, RwLock};
 use tokio_tungstenite::{accept_async, tungstenite, WebSocketStream};
 use tungstenite::Message;
 
@@ -28,8 +30,10 @@ pub struct WsServer {
 /// WsConnection maintains state. When WsServer accept a new connection, a WsConnection will be returned.
 #[derive(Debug, Clone)]
 pub struct WsConnection {
-    // TODO: define WebSocketStream here
     pub addr: SocketAddr,
+    pub sender: Arc<Mutex<SplitSink<WebSocketStream<TcpStream>, Message>>>,
+    pub receiver: Arc<Mutex<SplitStream<WebSocketStream<TcpStream>>>>,
+
     // TODO: add other session type
     pub storage_sessions: Arc<RwLock<StorageSessions>>,
 }
@@ -42,59 +46,48 @@ impl WsServer {
     }
 
     /// returns a WebSocketStream and corresponding connection as a state
-    pub async fn accept(&self) -> tungstenite::Result<(WebSocketStream<TcpStream>, WsConnection)> {
+    pub async fn accept(&self) -> tungstenite::Result<WsConnection> {
         let (stream, addr) = self.listener.accept().await?;
         let stream = accept_async(stream).await?;
-        Ok((
-            stream,
-            WsConnection {
-                addr,
-                storage_sessions: Arc::new(RwLock::new(StorageSessions::new())),
-            },
-        ))
+        let (sender, receiver) = stream.split();
+        Ok(WsConnection {
+            addr,
+            sender: Arc::new(Mutex::new(sender)),
+            receiver: Arc::new(Mutex::new(receiver)),
+            storage_sessions: Arc::new(RwLock::new(StorageSessions::new())),
+        })
     }
 }
 
 impl WsConnection {
-    pub async fn handle_message(&self, msg: Message) -> Result<Message> {
+    pub fn addr(&self) -> SocketAddr {
+        self.addr
+    }
+
+    pub async fn handle_message(&self, msg: impl Into<String>) -> Result<String> {
+        let msg = msg.into();
+        let msg = serde_json::from_str(&*msg).map_err(ServiceError::JsonError);
         match msg {
-            Message::Text(text) => {
-                let msg = serde_json::from_str(&*text).map_err(ServiceError::JsonError);
-                match msg {
-                    Ok(msg) => {
-                        // handle jsonrpc error
-                        let session: Session = Session::from(&msg);
-                        let res = self.handle_request(session.clone(), msg).await;
-                        let result = match res {
-                            Ok(success) => serde_json::to_string(&success)
-                                .expect("serialize result for success response"),
-                            Err(failure) => serde_json::to_string(&failure)
-                                .expect("serialize result for failure response"),
-                        };
+            Ok(msg) => {
+                // handle jsonrpc error
+                let session: Session = Session::from(&msg);
+                let res = self.handle_request(session.clone(), msg).await;
+                let result = match res {
+                    Ok(success) => serde_json::to_string(&success)
+                        .expect("serialize result for success response"),
+                    Err(failure) => serde_json::to_string(&failure)
+                        .expect("serialize result for failure response"),
+                };
 
-                        let response = ResponseMessage {
-                            id: session.client_id,
-                            chain: session.chain_name,
-                            result,
-                        };
+                let response = ResponseMessage {
+                    id: session.client_id,
+                    chain: session.chain_name,
+                    result,
+                };
 
-                        // TODO: handle serde_json error;
-                        Ok(Message::Text(
-                            serde_json::to_string(&response)
-                                .expect("serialize response for elara"),
-                        ))
-                    }
-                    // handle json api error
-                    Err(err) => Err(err),
-                }
+                Ok(serde_json::to_string(&response).expect("serialize response for elara"))
             }
-
-            // TODO:
-            Message::Binary(_bytes) => {
-                unimplemented!()
-            }
-            // TODO:
-            _ => unreachable!(),
+            Err(err) => Err(err),
         }
     }
 
@@ -131,7 +124,7 @@ impl WsConnection {
 }
 
 // transfer a kafka message to a group of SubscribedMessage according to storage session
-pub fn handle_kafka_message(
+pub fn collect_subscribed_storage(
     sessions: &StorageSessions,
     msg: OwnedMessage,
 ) -> Result<Vec<SubscribedMessage>> {
